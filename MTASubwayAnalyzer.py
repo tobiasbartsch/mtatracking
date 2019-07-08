@@ -14,6 +14,17 @@ import algorithms
 import algorithms.STaSI as st
 import algorithms.HaarWavelet as hw
 
+#class delayOfTrainsBayes(object):
+#    """Determine the delay of trains on a subway line."""
+
+#    def __init__(self, mySubwaySystem):
+#        self.subwaysys = mySubwaySystem
+#        analyzer = MTASubwayAnalyzer(self.subwaysys)
+#        
+#
+#    def _current_mean
+#line_id, trains_in_line, mean_transit_times, sdev_transit_times
+
 class MTASubwayAnalyzer(object):
     """Provides methods and properties to analyze the data contained in a SubwaySystem object.
     In order to improve code reusability try to have logic happen here instead of the ViewModel layer (and certainly not in the view layer).
@@ -197,89 +208,6 @@ class MTASubwayAnalyzer(object):
 
         return data, fitArray, results, fit_hist, data_hist, MDLs
 
-    def AverageTransitTimeBetweenTwoStations(self, windowsize_seconds, line_id, station_id_o, station_id_d, timestamp_start, timestamp_end):
-        """Return the average travel times between a pair of stations in a particular line vs time of a day. 
-            Args:
-                windowsize_seconds (int): Windows over which the data is blocked. Blocks are then averaged over all (appropriate) days in the dataset.
-                                    Windows should have an appropriate size, larger the expected delta in subway arrival time.
-                line_id (string): ID of the line for which the average is computed (e.g. for northbound Q: 'QN')
-                station_id_o (string): ID of the origin station
-                station_id_d (string): ID of the destination station
-                timestamp_start (int): Unix timestamp at which to start the averaging. If this timestamp is before tracking began we will start at the first time stamp in the Subway System.
-                timestamp_end (int): Unix timestamp at which to end the averaging. If this timestamp is after tracking ended, we will average until the end of tracking.
-            
-            Returns:
-                (TransitTimes_weekday, TransitTimes_weekend): tupel of numpy arrays, rows: time axis in steps of windowsize. Each entry is a list of [mean transit time, sdev, number of observations]
-        """
-        if (timestamp_start < self.subwaysys.timestamp_startTracking):
-            timestamp_start = self.subwaysys.timestamp_startTracking
-        if (timestamp_end > self.subwaysys.timestamp_endTracking):
-            timestamp_end = self.subwaysys.timestamp_endTracking
-
-        numblocks = math.floor(86400.0 /windowsize_seconds)
-        
-        TransitTimes_weekday = np.empty((numblocks), dtype=object)
-        TransitTimes_weekend = np.empty((numblocks), dtype=object)
-        #Initialize the empty np arrays with lists to which we can then append
-        for index, o in np.ndenumerate(TransitTimes_weekday): #fill does NOT work here. If you call .fill([]), it will fill the array with references to the SAME list object.
-            TransitTimes_weekday[index] = []
-        for index, o in np.ndenumerate(TransitTimes_weekend):
-            TransitTimes_weekend[index] = []
-
-        trains_origin = self.subwaysys.stations[station_id_o].trains_stopped[line_id]
-        trains_destination = self.subwaysys.stations[station_id_d].trains_stopped[line_id]
-
-        #iterate through all trains left the origin station and check how long it took them to get to the destination station
-        for train_id in trains_origin:
-            if(train_id in trains_destination):
-                departure_time = trains_origin[train_id]
-                arrival_time = trains_destination[train_id]
-                transit_time = arrival_time - departure_time
-            else:
-                #print('Warning: train did not arrive at destination station :', train_id)
-                arrival_time = np.nan
-                transit_time = np.nan
-                continue
-            
-            #all times are Unix timestamps. We need to do two things:
-            #1) figure out whether we are on a weekday or weekend
-            #2) Stick each transit_time into an appropriate block of a day
-            #iterate through all time steps in the subway system
-            if departure_time > timestamp_start and arrival_time < timestamp_end:
-                (day, seconds_since_midnight) = self.timestamp_to_day_time(departure_time, tzone='US/Eastern')
-                block = math.floor(float(seconds_since_midnight) / windowsize_seconds)
-                if(day < 5): 
-                    #weekday
-                    TransitTimes_weekday[block].append(transit_time)
-                else:
-                    #weekend
-                    TransitTimes_weekend[block].append(transit_time)
-        
-        # #make histogram and gauss fit for each station and each window
-        fitfunc  = lambda p, x: p[0]*np.exp(-0.5*((x-p[1])/p[2])**2)
-        errfunc  = lambda p, x, y: (y - fitfunc(p, x))
-        init  = [10, 500, 100] #initialize amplitude, mean, and sdev
-        binsize = 30
-        for TransitTime in [TransitTimes_weekday, TransitTimes_weekend]:
-            for index, data in np.ndenumerate(TransitTime): #make histograms with 30 s bin width. Allow for data up to 3600 seconds.
-                if len(data) > 10: #we want at least 4 observations
-                    (counts, deltaT) = np.histogram(data, bins=math.floor(3600/binsize), range=(0, 3600))
-                    deltaT = deltaT[0:-1] + binsize/2 #convert bin edges into bin centers
-                    init = [np.max(counts),np.mean(data), np.sqrt(np.var(data))]
-                    if(list(counts).index(max(counts))==0): #the transit time is faster than our binsize. The best we can say is that it happened in 15 s, the mean of the first bin.
-                        c=(np.nan,15,0)
-                    else:
-                        out = leastsq(errfunc, init, args=(deltaT, counts))
-                        c = out[0]
-                    if (c[1] < 0):
-                        print('found negative time')
-                        c[1] = np.mean(data)
-                    TransitTime[index]= [c[1], c[2], np.sum(counts)]
-                else:
-                    TransitTime[index]= [None, None, None]
-            
-        return (TransitTimes_weekday, TransitTimes_weekend)
-
     def timestamp_to_day_time(self, timestamp, tzone='US/Eastern'):
         '''Convert a time stamp to a tupel of (weekday, seconds_since_midnight).
         You can set a timezone, but by default this function assumes that we are in US/Eastern.
@@ -299,4 +227,6 @@ class MTASubwayAnalyzer(object):
         seconds_since_midnight = (dt - dt.replace(hour=0, minute=0, second=0, microsecond=0)).total_seconds()
 
         return (day, seconds_since_midnight)
+
+
 
