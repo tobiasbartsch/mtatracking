@@ -7,6 +7,10 @@ import time
 import pandas
 import mtatracking.nyct_subway_pb2 as nyct_subway_pb2
 from collections import defaultdict
+import numpy as np
+
+from importlib.resources import path
+from . import resources
 
 class SubwaySystem(object):
     """A subway system consists of stations, lines, and trains.
@@ -461,9 +465,10 @@ class MTAstaticdata(object):
         Returns:
             stopsdict (dict): Dictionary of (station_ids : station names)
         """
-        with open('stops.txt', mode='r') as infile:
-            reader = csv.reader(infile)
-            stopsdict = {rows[0]:rows[2] for rows in reader}
+        with path(resources, 'stops.txt') as stop_path:
+            with open(stop_path, mode='r') as infile:
+                reader = csv.reader(infile)
+                stopsdict = {rows[0]:rows[2] for rows in reader}
         return stopsdict
 
     @staticmethod
@@ -473,6 +478,7 @@ class MTAstaticdata(object):
         Returns:
             linesdict (dict): Dictionary of lines (line_ids : list of station_ids)
         """
-        data = pandas.read_csv('lines_definition.csv')
+        with path(resources, 'lines_definition.csv') as line_path:
+            data = pandas.read_csv(line_path)
         return data
 

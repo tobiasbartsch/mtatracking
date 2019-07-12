@@ -208,6 +208,44 @@ class MTASubwayAnalyzer(object):
 
         return data, fitArray, results, fit_hist, data_hist, MDLs
 
+    def getStatsForEachState(data, results, normalized):
+        """Return the distribution of data for each state found by the STaSI algorithm
+
+        Args:
+            data (xr.DataArray): the time series
+            results (pd.DataFrame): output of AverageTransitTimeBetweenTwoStations_STaSI 
+            normalized (boolean): if true: return normalized distributions
+        Returns:
+            dists (dict((bins, vals)): dictionary of probability distributions
+        """
+
+        #get the maximum number of states
+        numstates = np.max(results['state'])
+        data_in_state = dict()
+        utc = pytz.utc
+        est = pytz.timezone('US/Eastern')
+        for index, segment in results.iterrows():
+            state = segment['state']
+            start_timestamp = segment['start_timestamps']
+            stop_timestamp = segment['stop_timestamps']
+            startdate = utc.localize(datetime.utcfromtimestamp(start_timestamp)).astimezone(est)
+            stopdate = utc.localize(datetime.utcfromtimestamp(stop_timestamp)).astimezone(est)
+            dataseg = data.loc[startdate:stopdate]
+            if str(state) in data_in_state:
+                data_in_state[str(state)] =  np.concatenate((data_in_state[str(state)], dataseg))
+            else:
+                data_in_state[str(state)] = dataseg
+        dists = dict()
+        for k, d in data_in_state.items():
+            hist = np.histogram(d, bins=200, range=(0,6000))
+            vals = hist[0]
+            bins = hist[1][:-1] + hist[1][0]/2
+            norm = np.trapz(x = bins, y = vals)
+            vals = vals/norm
+            dists[k] = hv.Curve((bins, vals))
+
+        return dists
+
     def timestamp_to_day_time(self, timestamp, tzone='US/Eastern'):
         '''Convert a time stamp to a tupel of (weekday, seconds_since_midnight).
         You can set a timezone, but by default this function assumes that we are in US/Eastern.
