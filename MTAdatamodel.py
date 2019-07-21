@@ -48,6 +48,15 @@ class SubwaySystem(object):
 
         self.last_attached_file_timestamp = None
 
+    def stationID_to_stationName(self, id):
+        return self.stations[id].name
+
+    def ids_to_names(self, ids):
+        '''change strings like 'R30N to Q01N' to 'DeKalb Av to Canal St' '''
+        ids = ids.split()
+        return self.stationID_to_stationName(ids[0]) + " to " + self.stationID_to_stationName(ids[2])
+        
+
     def attach_tracking_data(self, data, currenttime):
         """Process the protocol buffer feed and populate our subway model with its data.
         
@@ -284,6 +293,8 @@ class SubwayTrain(object):
 
         self._arrival_time = None
         self._arrival_station_id = None
+        self._departure_station_id = None
+        self._departed_at_time = None
         self.scheduled_track = None
         self.actual_track = None
 
@@ -324,10 +335,11 @@ class SubwayTrain(object):
     def direction(self):
         return self._direction
 
-    @route_id.setter
+    @direction.setter
     def direction(self, val):
         if(val != self._direction):
-            print('direction changed from ' + str(self._direction) + ' to ' + str(val))
+            #print('direction changed from ' + str(self._direction) + ' to ' + str(val))
+            pass
         self._direction = val
 
     @property
@@ -379,6 +391,16 @@ class SubwayTrain(object):
         #TODO on property changed
 
     @property
+    def departure_station_id(self):
+        """Get the ID of the station that we last departed. If that station is unknown this property will be 'None'"""
+        return self._departure_station_id
+
+    @property
+    def departed_at_time(self):
+        """Get the timestamp at which we last departed a station. If that timestamp is unknown this property will be 'None'"""
+        return self._departed_at_time
+
+    @property
     def arrival_station_id(self):
         """Get the ID of the next station at which this train will arrive."""
         return self._arrival_station_id
@@ -386,6 +408,7 @@ class SubwayTrain(object):
     @arrival_station_id.setter
     def arrival_station_id(self, id_timestamp):
         """Set the ID of the next station at which this train will arrive.
+            Additionally update the current origin station, i.e. the station we just left
         
         Args
             id_timestamp (tuple): (id of the next station at which this train arrives, timestamp).
@@ -404,15 +427,16 @@ class SubwayTrain(object):
                         self.stations[self._arrival_station_id] = SubwayStation(self._arrival_station_id, 'UNKNOWN', self.subwaysys) #if our station is not in the current dictionary, add it as an unknown station.
                     self.stations[self._arrival_station_id].registerStoppedTrain(self.unique_num, self.route_id, self.direction, timestamp) # this may mess up if a train gets rerouted: we will think that the train reached a station it did not actually stop at.
                     
-                    #also just for fun print the status of the train, since we want to find out why that message does not get updated properly.
-                    #print(str(self.unique_num) + " (Route " + str(self.route_id) + ")" + " passed by " + str(self._arrival_station_id))
-                    #print("Status: " + str(self._status))
-                    #actually update our value:
-                self._arrival_station_id = id
+                    #actually update our values:
+                    self._departure_station_id = self._arrival_station_id
+                    self._departed_at_time = timestamp
+                    self._arrival_station_id = id
             else:
                 '''there is a gap > 40s in the tracking data -- we cannot be sure where the train previously was, all we know is where it is going. Update the arrival station id only, but leave the departure station alone''' 
                 if(self.is_assigned==True):
                     self._arrival_station_id = id
+                    self._departure_station_id = None
+                    self._departed_at_time = None
 
     @property
     def status(self):
@@ -453,6 +477,7 @@ class SubwayTrain(object):
         self._status = status
         self._status_timestamp = timestamp
         self._status_stop_id = stop_id
+    
 
 
 class MTAstaticdata(object):

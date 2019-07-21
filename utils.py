@@ -1,6 +1,9 @@
 import pickle
+import sys
+sys.path.append('/home/tbartsch/source/repos')
 from mtatracking.MTAdatamodel import SubwaySystem
 from mtatracking.MTASubwayAnalyzer import MTASubwayAnalyzer
+import mtatracking.gtfs_realtime_pb2 as gtfs_realtime_pb2
 import os as os
 from os.path import dirname
 from os import walk
@@ -45,10 +48,11 @@ class utils(object):
                 myfile = os.path.join(mypath, n)
                 try:
                     data = utils.read(myfile)
+                    mySubwaySystem.attach_tracking_data(data, stamp)
                 except:
                     print("Error loading file" + str(stamp))
                     pass
-                mySubwaySystem.attach_tracking_data(data, stamp)
+                
 
     def findAvgArrTimeDeltasForAllLines(mySubwaySystem, bin_width, timestamp_start, timestamp_end):
         """Compute the mean arrival time deltas between successive trains for each station along each line in the system.

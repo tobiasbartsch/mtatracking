@@ -8,6 +8,8 @@ from datetime import datetime
 from operator import itemgetter
 from collections import defaultdict
 
+import sys
+sys.path.append('/home/tbartsch/source/repos')
 import mtatracking.nyct_subway_pb2 as nyct_subway_pb2
 import mtatracking.gtfs_realtime_pb2 as gtfs_realtime_pb2
 

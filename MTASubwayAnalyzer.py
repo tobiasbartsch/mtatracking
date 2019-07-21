@@ -1,29 +1,156 @@
+import sys
+sys.path.append("/home/tbartsch/source/repos")
+
 from mtatracking.MTAdatamodel import SubwaySystem
 import math
 import numpy as np
 from datetime import datetime
 import pytz
 from scipy.optimize import leastsq
-from collections import defaultdict
+from scipy.stats import norm
+from scipy.integrate import quad
 from scipy.special import gamma
-import xarray as xr
+import pymc3 as pm
 
-import sys
-sys.path.append("/home/tbartsch/source/repos")
+from collections import defaultdict
+import xarray as xr
+import warnings
+
+
 import algorithms
 import algorithms.STaSI as st
 import algorithms.HaarWavelet as hw
 
-#class delayOfTrainsBayes(object):
-#    """Determine the delay of trains on a subway line."""
+class delayOfTrainsInLine_Bayes(object):
+    """Determine the delay of trains on a subway line."""
 
-#    def __init__(self, mySubwaySystem):
-#        self.subwaysys = mySubwaySystem
-#        analyzer = MTASubwayAnalyzer(self.subwaysys)
-#        
-#
-#    def _current_mean
-#line_id, trains_in_line, mean_transit_times, sdev_transit_times
+    def __init__(self, line_id, currentMeanTravelTimes, currentTravelTimeSdevs, n=3):
+        """create a delayOfTrainsInLine_Bayes instance.
+        Args:
+            line_id (string): id of this subway line. For northbound Q trains, for example, pass 'QN'.
+            currentMeanTravelTimes (dict(float)): mean transit time between adjacent stations. 
+                                                keys: pair of stations ids, e.g. 'R30N to Q01N'
+            currentTravelTimeSdevs (dict(float)): sdev of transit time between adjacent stations. 
+                                                keys: pair of stations ids, e.g. 'R30N to Q01N'
+            n (float): number of sdevs that define a threshold beyond which we treat a train as delayed (delay for t > n).
+        """
+        self.line_id = line_id
+        self.means = currentMeanTravelTimes
+        self.sdevs = currentTravelTimeSdevs
+        self.n = n
+
+        #initialize the delay probability along this line
+        self.delayProbs = {key: 0.0 for key in self.means.keys()}
+
+    def changeThreshold(self, n):
+        """Change the definition of a 'delay': a train has to be n standard deviations late to be considered 'delayed'.
+        Args:
+            n (float): number of sdevs that define a threshold beyond which we treat a train as delayed (delay for t > n).
+        """
+        self.n = n
+    
+    def updateDelayProbs(self, trains_in_line, timestamp):
+        """Calculate the probability that a delay occurs between a pair of stations based on the wait time for a train.
+        
+        Args:
+            trains_in_line (list of mtatracking.MTAdatamodel.SubwayTrain): the realtime train objects that are currently traversing this subway line.
+            timestamp (int): the timestamp at which the current trains were observed.
+        """
+        for train in trains_in_line:
+            origin_id = train.departure_station_id
+            if(origin_id is None):
+                continue
+            destination_id = train.arrival_station_id
+            wait_time = timestamp - train.departed_at_time
+            key = origin_id + ' to ' + destination_id
+            if(key in self.delayProbs.keys()): #check whether the current train is travelling between two known stations.
+                self.delayProbs[key] = self._probability_of_delay(wait_time, self.means[key], self.sdevs[key], self.n)
+            else: #this generally should not happen. if it does, figure out why. The train is probably rerouted from its regular line.
+                warnings.warn("Train " + train.unique_num + " does not appear to follow its assigned route. \
+                     Stations " + origin_id + " and " + destination_id + " do not form an adjacent pair \
+                         on the " + train.route_id + " line in the " + train.direction + "direction.")
+
+
+
+    def updateMeansAndSdevs(self, currentMeanTravelTimes, currentTravelTimeSdevs):
+        """update the mean travel times (and sdevs) between adjacent stations. This should be done fairly frequently (maybe every hour?)
+            in case the 'state' of a particular connection changes (planned maintenance, etc.)
+
+        Args:
+            currentMeanTravelTimes (dict(float)): mean transit time between adjacent stations. 
+                                                keys: pair of stations ids, e.g. 'R30N to Q01N'
+            currentTravelTimeSdevs (dict(float)): sdev of transit time between adjacent stations. 
+                                                keys: pair of stations ids, e.g. 'R30N to Q01N'
+        """
+        self.means = currentMeanTravelTimes
+        self.sdevs = currentTravelTimeSdevs
+
+    def _rho_t_given_H(self, t, n, delayed):
+        '''compute the probability density of a transit time t given a train delay. A train counts as delayed if it arrives with a delay of at least n sdevs higher than the mean
+        
+        Args:
+            t (float): time expressed in multiples of the standard deviation and with zero mean.
+            n (float): number of sdevs that define a threshold beyond which we treat a train as delayed (delay for t > n).
+            delayed (boolean): the hypothesis: is the train delayed? True/False
+            
+        Returns:
+            rho (float): probability density
+        '''
+        
+        if(t > n):
+            if(delayed):
+                return norm.pdf(t)/(1-norm.cdf(n))
+            else:
+                return 0
+        else:
+            if(delayed):
+                return 0
+            else:
+                return norm.pdf(t)/norm.cdf(n)
+
+    def _likelihood(self, t0, n, delayed):
+        '''compute the likelihood of observing t>t0 given that the current train is (not) delayed.
+        
+        Args:
+            t0 (float): current wait time for the inbound train (expressed in multiples of sdev and with zero mean).
+            n (float): number of sdevs that define a threshold beyond which we treat a train as delayed (delay for t > n).
+            delayed (boolean): the hypothesis: is the train delayed? True/False
+            
+        Returns:
+            likelihood (float)
+        '''
+        
+        like = delayed * (1/(1-norm.cdf(n)) * (1-norm.cdf(np.max([n, t0])))) + (1-delayed) * (1/norm.cdf(n) * (norm.cdf(np.max([t0,n])) - norm.cdf(t0)))
+        
+        return like
+        
+    def _p_H(self, n, delayed):
+        '''compute the prior.
+        
+        Args:
+            n (float): number of sdevs that define a threshold beyond which we treat a train as delayed (delay for t > n).
+            delayed (boolean): the hypothesis: is the train delayed? True/False
+        '''
+        if(delayed):
+            return 1-norm.cdf(n)
+        else:
+            return norm.cdf(n)
+
+    def _probability_of_delay(self, t0, mu, sigma, n):
+        '''compute the posterior probability: what is the predicted delay probability after we have waited a time t0 for a train.
+        
+        Args:
+            t0 (float): time in seconds since the train left the origin station 
+            mu (float): average transit time (in seconds) between the stations
+            sigma (float): standard devition (in seconds) of the transit time between stations
+            n (float): number of sdevs that define a threshold beyond which we treat a train as delayed (delay for (t_arrival-mu)/sdev > n).
+        '''
+        
+        #normalize t0
+        t0 = (t0-mu)/sigma
+        
+        return self._p_H(n, delayed=True) * self._likelihood(t0, n, delayed=True) / (self._p_H(n, delayed=True) * self._likelihood(t0, n, delayed=True) + self._p_H(n, delayed=False) * self._likelihood(t0, n, delayed=False))
+                
 
 class MTASubwayAnalyzer(object):
     """Provides methods and properties to analyze the data contained in a SubwaySystem object.
@@ -208,15 +335,19 @@ class MTASubwayAnalyzer(object):
 
         return data, fitArray, results, fit_hist, data_hist, MDLs
 
-    def getStatsForEachState(data, results, normalized):
-        """Return the distribution of data for each state found by the STaSI algorithm
+    def getStatsForStates(self, data, results, normalized, statenum=None):
+        """Return the distribution of data for each state found by the STaSI algorithm.
 
         Args:
             data (xr.DataArray): the time series
             results (pd.DataFrame): output of AverageTransitTimeBetweenTwoStations_STaSI 
             normalized (boolean): if true: return normalized distributions
+            statenum (int): if statenum is not None: process only the n-th state. Otherwise process all states.
         Returns:
-            dists (dict((bins, vals)): dictionary of probability distributions
+            (dists, means, sdevs) 
+                dists: (dict((bins, vals)): dictionary of probability distributions
+                means: (dict(vals)): dictionary of means
+                sdevs: (dict(vals)): dictionary of standard deviations
         """
 
         #get the maximum number of states
@@ -231,20 +362,34 @@ class MTASubwayAnalyzer(object):
             startdate = utc.localize(datetime.utcfromtimestamp(start_timestamp)).astimezone(est)
             stopdate = utc.localize(datetime.utcfromtimestamp(stop_timestamp)).astimezone(est)
             dataseg = data.loc[startdate:stopdate]
-            if str(state) in data_in_state:
-                data_in_state[str(state)] =  np.concatenate((data_in_state[str(state)], dataseg))
+            if str(int(state)) in data_in_state:
+                data_in_state[str(int(state))] =  np.concatenate((data_in_state[str(int(state))], dataseg))
             else:
-                data_in_state[str(state)] = dataseg
+                data_in_state[str(int(state))] = dataseg
         dists = dict()
+        means = dict()
+        sdevs = dict()
         for k, d in data_in_state.items():
-            hist = np.histogram(d, bins=200, range=(0,6000))
-            vals = hist[0]
-            bins = hist[1][:-1] + hist[1][0]/2
-            norm = np.trapz(x = bins, y = vals)
-            vals = vals/norm
-            dists[k] = hv.Curve((bins, vals))
+            if(statenum is None or int(k)==statenum):
+                hist = np.histogram(d, bins=2000, range=(0,60000))
+                vals = hist[0]
+                bins = hist[1][:-1] + hist[1][0]/2
+                norm = np.trapz(x = bins, y = vals)
+                vals = vals/norm
+                dists[k] = (bins, vals)
 
-        return dists
+                #model this as gaussian and find mean and sdev by mcmc
+                with pm.Model() as model:
+                    mean = pm.Normal(name = 'mean', mu=np.mean(d), sd=np.std(d))
+                    sdev = pm.Normal(name = 'sdev', mu=np.std(d), sd=np.std(d))
+                    obs = pm.Normal(name = 'obs', mu=mean, sd=sdev, observed = d)
+                    trace = pm.sample(500, tune=500, nuts_kwargs=dict(target_accept=0.90), cores=16)
+                
+                means[k] = float(pm.summary(trace)[0:-1]['mean'])
+                sdevs[k] = float(pm.summary(trace)[1:]['mean'])
+
+        return dists, means, sdevs
+
 
     def timestamp_to_day_time(self, timestamp, tzone='US/Eastern'):
         '''Convert a time stamp to a tupel of (weekday, seconds_since_midnight).

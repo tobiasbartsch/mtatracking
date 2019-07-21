@@ -14,7 +14,6 @@ _sym_db = _symbol_database.Default()
 
 import mtatracking.gtfs_realtime_pb2 as gtfs__realtime__pb2
 
-
 DESCRIPTOR = _descriptor.FileDescriptor(
   name='nyct-subway.proto',
   package='',

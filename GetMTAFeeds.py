@@ -1,7 +1,7 @@
 import time
 
-from utils import utils
-from MTAdatamine_v2 import MTAdatamine
+from mtatracking.utils import utils
+from mtatracking.MTAdatamine import MTAdatamine
 #from MTAdatamodel import SubwaySystem
 
 #from MTAdatamodel import SubwaySystem
