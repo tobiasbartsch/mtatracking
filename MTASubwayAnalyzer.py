@@ -32,8 +32,8 @@ class delayOfTrainsInLine_Bayes(object):
             n (float): number of sdevs that define a threshold beyond which we treat a train as delayed (delay for t > n).
         """
         self.line_id = line_id
-        self.means = dict(float) #mean transit time between adjacent stations. keys: pair of stations ids, e.g. 'R30N to Q01N'
-        self.sdevs = dict(float) #sdev of transit time between adjacent stations. keys: pair of stations ids, e.g. 'R30N to Q01N'
+        self.means = dict() #mean transit time between adjacent stations. keys: pair of stations ids, e.g. 'R30N to Q01N'
+        self.sdevs = dict() #sdev of transit time between adjacent stations. keys: pair of stations ids, e.g. 'R30N to Q01N'
         self.n = n
         self.analyzer = analyzer
 
