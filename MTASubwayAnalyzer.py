@@ -24,20 +24,18 @@ import algorithms.HaarWavelet as hw
 class delayOfTrainsInLine_Bayes(object):
     """Determine the delay of trains on a subway line."""
 
-    def __init__(self, line_id, currentMeanTravelTimes, currentTravelTimeSdevs, n=3):
+    def __init__(self, line_id, analyzer, n=3):
         """create a delayOfTrainsInLine_Bayes instance.
         Args:
             line_id (string): id of this subway line. For northbound Q trains, for example, pass 'QN'.
-            currentMeanTravelTimes (dict(float)): mean transit time between adjacent stations. 
-                                                keys: pair of stations ids, e.g. 'R30N to Q01N'
-            currentTravelTimeSdevs (dict(float)): sdev of transit time between adjacent stations. 
-                                                keys: pair of stations ids, e.g. 'R30N to Q01N'
+            analyzer (MTASubwayAnalyzer): analyzer object of historic subway data (ideally with data up to the present day/time)
             n (float): number of sdevs that define a threshold beyond which we treat a train as delayed (delay for t > n).
         """
         self.line_id = line_id
-        self.means = currentMeanTravelTimes
-        self.sdevs = currentTravelTimeSdevs
+        self.means = dict(float) #mean transit time between adjacent stations. keys: pair of stations ids, e.g. 'R30N to Q01N'
+        self.sdevs = dict(float) #sdev of transit time between adjacent stations. keys: pair of stations ids, e.g. 'R30N to Q01N'
         self.n = n
+        self.analyzer = analyzer
 
         #initialize the delay probability along this line
         self.delayProbs = {key: 0.0 for key in self.means.keys()}
@@ -63,13 +61,11 @@ class delayOfTrainsInLine_Bayes(object):
             destination_id = train.arrival_station_id
             wait_time = timestamp - train.departed_at_time
             key = origin_id + ' to ' + destination_id
-            if(key in self.delayProbs.keys()): #check whether the current train is travelling between two known stations.
-                self.delayProbs[key] = self._probability_of_delay(wait_time, self.means[key], self.sdevs[key], self.n)
-            else: #this generally should not happen. if it does, figure out why. The train is probably rerouted from its regular line.
-                warnings.warn("Train " + train.unique_num + " does not appear to follow its assigned route. \
-                     Stations " + origin_id + " and " + destination_id + " do not form an adjacent pair \
-                         on the " + train.route_id + " line in the " + train.direction + "direction.")
-
+            if(key not in self.means.keys()): #check whether the current train is travelling between two known stations.
+                #get the statistics for this segment:
+                self.means[key], self.sdevs[key]= self._getCurrentTravelTimeMeanAndSdev(origin_id, destination_id)
+            
+            self.delayProbs[key] = self._probability_of_delay(wait_time, self.means[key], self.sdevs[key], self.n)
 
 
     def updateMeansAndSdevs(self, currentMeanTravelTimes, currentTravelTimeSdevs):
@@ -150,7 +146,30 @@ class delayOfTrainsInLine_Bayes(object):
         t0 = (t0-mu)/sigma
         
         return self._p_H(n, delayed=True) * self._likelihood(t0, n, delayed=True) / (self._p_H(n, delayed=True) * self._likelihood(t0, n, delayed=True) + self._p_H(n, delayed=False) * self._likelihood(t0, n, delayed=False))
-                
+
+    def _getCurrentTravelTimeMeanAndSdev(self, origin_id, destination_id):
+        '''find the current travel time mean and sdev between two stations of this line using the historic data in the subway analyzer model.
+        If the historic data does not contain any trains (of the given line) that tarvelled between these stations, return None.
+
+        Args:
+            origin_id (string): id of the origin station
+            destination_id (string): id of the destination station
+
+        Returns:
+            (mean, sdev)
+        '''
+        #get the current mean and sdev from STaSI
+        data, _, result, _, _, _ = self.analyzer.AverageTransitTimeBetweenTwoStations_STaSI(line_id='QN', station_id_d=destination_id, station_id_o=origin_id, timestamp_end=self.analyzer.subwaysys.timestamp_endTracking, timestamp_start=self.analyzer.subwaysys.timestamp_startTracking)
+        
+        state = int(result[-1:]['state']) #find the current state for the given pair of stations
+        #key = key = origin_id + ' to ' + destination_id
+        
+        #get the distribution of data for the current state.
+        _, means, sdevs = self.analyzer.getStatsForStates(data, result, normalized=False, statenum=state)
+        
+        return (means[str(state)], sdevs[str(state)])
+        
+        
 
 class MTASubwayAnalyzer(object):
     """Provides methods and properties to analyze the data contained in a SubwaySystem object.
