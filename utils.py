@@ -16,16 +16,19 @@ import pytz
 class utils(object):
     """Write or read python objects to/from the harddisk."""
 
+    @staticmethod
     def write(obj, filename):
         with open(filename, 'wb') as output:
             pickle.dump(obj, output, pickle.HIGHEST_PROTOCOL)   
         return True           
     
+    @staticmethod
     def read(filename):
             with open(filename, 'rb') as input:
                 x = pickle.load(input)
             return x
 
+    @staticmethod
     def attach_all_tracking(mySubwaySystem, mypath):
         f = []
         print(mypath)
@@ -53,7 +56,7 @@ class utils(object):
                     print("Error loading file" + str(stamp))
                     pass
                 
-
+    @staticmethod
     def findAvgArrTimeDeltasForAllLines(mySubwaySystem, bin_width, timestamp_start, timestamp_end):
         """Compute the mean arrival time deltas between successive trains for each station along each line in the system.
         Data are returned as a function of "seconds past midnight"; the time axis is binned into bins of preset width. 
@@ -80,6 +83,7 @@ class utils(object):
 
         return (AvgArrTimeDeltasForAllLines, WeekendAvgArrTimeDeltasForAllLines)
 
+    @staticmethod
     def timestamp_to_day_time(timestamp, tzone='US/Eastern'):
         '''Convert a time stamp to a tupel of (weekday, seconds_since_midnight).
         You can set a timezone, but by default this function assumes that we are in US/Eastern.

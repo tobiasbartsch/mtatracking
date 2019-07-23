@@ -4,7 +4,7 @@ import warnings
 from bisect import bisect_left
 import datetime
 import time
-import pandas
+import pandas as pd
 import mtatracking.nyct_subway_pb2 as nyct_subway_pb2
 from collections import defaultdict
 import numpy as np
@@ -485,7 +485,7 @@ class MTAstaticdata(object):
 
     @staticmethod
     def ImportStationsDictionary():
-        """Import a dictionary of stops and their locations. Keys are the unique IDs of the stations.
+        """Import a dictionary of station names. Keys are the unique IDs of the stations.
         
         Returns:
             stopsdict (dict): Dictionary of (station_ids : station names)
@@ -495,6 +495,18 @@ class MTAstaticdata(object):
                 reader = csv.reader(infile)
                 stopsdict = {rows[0]:rows[2] for rows in reader}
         return stopsdict
+    
+    @staticmethod
+    def ImportStationsDataFrame():
+        """Import a pandas dataframe of station ids, names, and locations.
+        
+        Returns:
+            stationsDF (DataFrame): DataFrame with columns 'ids', 'names', 'location'
+        """
+        
+        with path(resources, 'stops.txt') as stop_path:
+           stationsDF = pd.read_csv(stop_path, delimiter = ',')
+        return stationsDF
 
     @staticmethod
     def ImportLineDefinitions():
@@ -504,6 +516,6 @@ class MTAstaticdata(object):
             linesdict (dict): Dictionary of lines (line_ids : list of station_ids)
         """
         with path(resources, 'lines_definition.csv') as line_path:
-            data = pandas.read_csv(line_path)
+            data = pd.read_csv(line_path)
         return data
 
