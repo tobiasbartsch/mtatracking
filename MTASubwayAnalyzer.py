@@ -54,6 +54,7 @@ class delayOfTrainsInLine_Bayes(object):
             trains_in_line (list of mtatracking.MTAdatamodel.SubwayTrain): the realtime train objects that are currently traversing this subway line.
             timestamp (int): the timestamp at which the current trains were observed.
         """
+        self.delayProbs = dict()
         for train in trains_in_line:
             origin_id = train.departure_station_id
             if(origin_id is None):
