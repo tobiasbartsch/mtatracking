@@ -1,3 +1,6 @@
+import numpy as np
+import pandas as pd
+
 def lookUpStationByLoc(lat, lon, stationsDF):
     '''return the station id of the station closest to stop_lat, stop_lon.
     
