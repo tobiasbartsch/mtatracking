@@ -399,15 +399,18 @@ class MTASubwayAnalyzer(object):
                 vals = vals/norm
                 dists[k] = (bins, vals)
 
-                #model this as gaussian and find mean and sdev by mcmc
-                with pm.Model() as model:
-                    mean = pm.Normal(name = 'mean', mu=np.mean(d), sd=np.std(d))
-                    sdev = pm.Normal(name = 'sdev', mu=np.std(d), sd=np.std(d))
-                    obs = pm.Normal(name = 'obs', mu=mean, sd=sdev, observed = d)
-                    trace = pm.sample(500, tune=500, nuts_kwargs=dict(target_accept=0.90), cores=16)
+                # #model this as gaussian and find mean and sdev by mcmc
+                # with pm.Model() as model:
+                #     mean = pm.Normal(name = 'mean', mu=np.mean(d), sd=np.std(d))
+                #     sdev = pm.Normal(name = 'sdev', mu=np.std(d), sd=np.std(d))
+                #     obs = pm.Normal(name = 'obs', mu=mean, sd=sdev, observed = d)
+                #     trace = pm.sample(500, tune=500, nuts_kwargs=dict(target_accept=0.90), cores=16)
                 
-                means[k] = float(pm.summary(trace)[0:-1]['mean'])
-                sdevs[k] = float(pm.summary(trace)[1:]['mean'])
+                # means[k] = float(pm.summary(trace)[0:-1]['mean'])
+                # sdevs[k] = float(pm.summary(trace)[1:]['mean'])
+
+                means[k] = np.mean(d)
+                sdevs[k] = np.std(d)
 
         return dists, means, sdevs
 
