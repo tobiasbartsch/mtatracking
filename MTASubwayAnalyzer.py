@@ -153,6 +153,7 @@ class delayOfTrainsInLine_Bayes(object):
         If the historic data does not contain any trains (of the given line) that tarvelled between these stations, return None.
 
         Args:
+            line_id (string): id of the subway line, for example 'QN' for northbound Q trains
             origin_id (string): id of the origin station
             destination_id (string): id of the destination station
 
@@ -160,7 +161,7 @@ class delayOfTrainsInLine_Bayes(object):
             (mean, sdev)
         '''
         #get the current mean and sdev from STaSI
-        data, _, result, _, _, _ = self.analyzer.AverageTransitTimeBetweenTwoStations_STaSI(line_id='QN', station_id_d=destination_id, station_id_o=origin_id, timestamp_end=self.analyzer.subwaysys.timestamp_endTracking, timestamp_start=self.analyzer.subwaysys.timestamp_startTracking)
+        data, _, result, _, _, _ = self.analyzer.AverageTransitTimeBetweenTwoStations_STaSI(line_id=self.line_id, station_id_d=destination_id, station_id_o=origin_id, timestamp_end=self.analyzer.subwaysys.timestamp_endTracking, timestamp_start=self.analyzer.subwaysys.timestamp_startTracking)
         
         state = int(result[-1:]['state']) #find the current state for the given pair of stations
         #key = key = origin_id + ' to ' + destination_id
