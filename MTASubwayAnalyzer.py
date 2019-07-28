@@ -143,7 +143,8 @@ class delayOfTrainsInLine_Bayes(object):
             sigma (float): standard devition (in seconds) of the transit time between stations
             n (float): number of sdevs that define a threshold beyond which we treat a train as delayed (delay for (t_arrival-mu)/sdev > n).
         '''
-        
+        if(mu is None or sigma is None): #if something went wrong in computing mu or sigma we cannot compute a probability.
+            return 0 #TODO handle this better.
         #normalize t0
         t0 = (t0-mu)/sigma
         
@@ -175,6 +176,8 @@ class delayOfTrainsInLine_Bayes(object):
         #get the distribution of data for the current state.
         _, means, sdevs = self.analyzer.getStatsForStates(data, result, normalized=False, statenum=state)
         
+        if str(state) not in means.keys():
+            return None, None
         return (means[str(state)], sdevs[str(state)])
         
         
