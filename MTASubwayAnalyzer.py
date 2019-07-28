@@ -391,7 +391,13 @@ class MTASubwayAnalyzer(object):
             stop_timestamp = segment['stop_timestamps']
             startdate = utc.localize(datetime.utcfromtimestamp(start_timestamp)).astimezone(est)
             stopdate = utc.localize(datetime.utcfromtimestamp(stop_timestamp)).astimezone(est)
-            dataseg = data.loc[startdate:stopdate]
+            try: 
+                dataseg = data.loc[startdate:stopdate]
+            except:
+                print("********************************EXCEPTION****************************")
+                print("segment " + str(segment))
+                print("start " + str(startdate))
+                print("end " + str(enddate))
             if str(int(state)) in data_in_state:
                 data_in_state[str(int(state))] =  np.concatenate((data_in_state[str(int(state))], dataseg))
             else:
