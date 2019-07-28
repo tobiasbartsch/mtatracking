@@ -163,6 +163,9 @@ class delayOfTrainsInLine_Bayes(object):
         #get the current mean and sdev from STaSI
         data, _, result, _, _, _ = self.analyzer.AverageTransitTimeBetweenTwoStations_STaSI(line_id=self.line_id, station_id_d=destination_id, station_id_o=origin_id, timestamp_end=self.analyzer.subwaysys.timestamp_endTracking, timestamp_start=self.analyzer.subwaysys.timestamp_startTracking)
         
+        if(data is None or result is None):
+            return (np.nan, np.nan)
+        
         state = int(result[-1:]['state']) #find the current state for the given pair of stations
         #key = key = origin_id + ' to ' + destination_id
         
@@ -329,6 +332,9 @@ class MTASubwayAnalyzer(object):
         tTimes_filtered = np.copy(np.asarray(transitTimeSeries)[mask])
         tTimes_coords_filtered = np.copy(np.asarray(transitTimeSeries_coords)[mask])
 
+        if len(tTimes_filtered) == 0:
+            return None, None, None, None, None, None
+        
         fit, means, results, MDLs = st.fitSTaSIModel(tTimes_filtered)
 
         tTimes_coords_filtered = np.array(tTimes_coords_filtered, dtype=object)
