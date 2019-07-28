@@ -395,9 +395,8 @@ class MTASubwayAnalyzer(object):
                 dataseg = data.loc[startdate:stopdate]
             except:
                 print("********************************EXCEPTION****************************")
-                print("segment " + str(segment))
                 print("start " + str(startdate))
-                print("end " + str(enddate))
+                print("end " + str(stopdate))
             if str(int(state)) in data_in_state:
                 data_in_state[str(int(state))] =  np.concatenate((data_in_state[str(int(state))], dataseg))
             else:
