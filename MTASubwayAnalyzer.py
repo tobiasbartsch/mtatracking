@@ -40,12 +40,13 @@ class delayOfTrainsInLine_Bayes(object):
         #initialize the delay probability along this line
         self.delayProbs = {key: 0.0 for key in self.means.keys()}
 
-    def preComputeMeanAndSdev(self, segs):
+    def preComputeMeanAndSdev(self, segs, timestamp_start, timestamp_end):
         """Compute the means and standard deviations of transit times along the segments defined in 'segs'.
         Store the results in self.means and self.sdevs
 
         Args:
             segs (list of string): list of pairs of station ids, ['R30N to Q01N', ... ]. Ids must correspond to stations along the given line (self.line_id)
+            timestamp_start, timestamp_end: historic time stamps for computation of the mean and sdev
         """
 
         for seg in segs:
@@ -60,12 +61,13 @@ class delayOfTrainsInLine_Bayes(object):
         """
         self.n = n
     
-    def updateDelayProbs(self, trains_in_line, timestamp):
+    def updateDelayProbs(self, trains_in_line, timestamp, timestamp_start = 0, timestamp_end = 999999999999):
         """Calculate the probability that a delay occurs between a pair of stations based on the wait time for a train.
         
         Args:
             trains_in_line (list of mtatracking.MTAdatamodel.SubwayTrain): the realtime train objects that are currently traversing this subway line.
             timestamp (int): the timestamp at which the current trains were observed.
+            timestamp_start, timestamp_end: historic time stamps for computation of the mean and sdev
         """
         self.delayProbs = dict()
         for train in trains_in_line:
@@ -77,23 +79,9 @@ class delayOfTrainsInLine_Bayes(object):
             key = origin_id + ' to ' + destination_id
             if(key not in self.means.keys()): #check whether the current train is travelling between two known stations.
                 #get the statistics for this segment:
-                self.means[key], self.sdevs[key]= self._getCurrentTravelTimeMeanAndSdev(origin_id, destination_id)
+                self.means[key], self.sdevs[key]= self._getCurrentTravelTimeMeanAndSdev(origin_id, destination_id, timestamp_start, timestamp_end)
             
             self.delayProbs[key] = self._probability_of_delay(wait_time, self.means[key], self.sdevs[key], self.n)
-
-
-    def updateMeansAndSdevs(self, currentMeanTravelTimes, currentTravelTimeSdevs):
-        """update the mean travel times (and sdevs) between adjacent stations. This should be done fairly frequently (maybe every hour?)
-            in case the 'state' of a particular connection changes (planned maintenance, etc.)
-
-        Args:
-            currentMeanTravelTimes (dict(float)): mean transit time between adjacent stations. 
-                                                keys: pair of stations ids, e.g. 'R30N to Q01N'
-            currentTravelTimeSdevs (dict(float)): sdev of transit time between adjacent stations. 
-                                                keys: pair of stations ids, e.g. 'R30N to Q01N'
-        """
-        self.means = currentMeanTravelTimes
-        self.sdevs = currentTravelTimeSdevs
 
     def _rho_t_given_H(self, t, n, delayed):
         '''compute the probability density of a transit time t given a train delay. A train counts as delayed if it arrives with a delay of at least n sdevs higher than the mean
@@ -161,7 +149,7 @@ class delayOfTrainsInLine_Bayes(object):
         
         return self._p_H(n, delayed=True) * self._likelihood(t0, n, delayed=True) / (self._p_H(n, delayed=True) * self._likelihood(t0, n, delayed=True) + self._p_H(n, delayed=False) * self._likelihood(t0, n, delayed=False))
 
-    def _getCurrentTravelTimeMeanAndSdev(self, origin_id, destination_id):
+    def _getCurrentTravelTimeMeanAndSdev(self, origin_id, destination_id, timestamp_start = 0, timestamp_end = 99999999999999):
         '''find the current travel time mean and sdev between two stations of this line using the historic data in the subway analyzer model.
         If the historic data does not contain any trains (of the given line) that tarvelled between these stations, return None.
 
@@ -169,15 +157,17 @@ class delayOfTrainsInLine_Bayes(object):
             line_id (string): id of the subway line, for example 'QN' for northbound Q trains
             origin_id (string): id of the origin station
             destination_id (string): id of the destination station
+            timestamp_start (int): timestamp of the historic data at which to start the computation
+            timestamp_end (int): timestamp of the historic data at which to stop the computation
 
         Returns:
             (mean, sdev)
         '''
         #get the current mean and sdev from STaSI
-        data, _, result, _, _, _ = self.analyzer.AverageTransitTimeBetweenTwoStations_STaSI(line_id=self.line_id, station_id_d=destination_id, station_id_o=origin_id, timestamp_end=self.analyzer.subwaysys.timestamp_endTracking, timestamp_start=self.analyzer.subwaysys.timestamp_startTracking)
+        data, _, result, _, _, _ = self.analyzer.AverageTransitTimeBetweenTwoStations_STaSI(line_id=self.line_id, station_id_d=destination_id, station_id_o=origin_id, timestamp_end=timestamp_end, timestamp_start=timestamp_start)
         
         if(data is None or result is None):
-            return (np.nan, np.nan)
+            return (None, None)
         
         state = int(result[-1:]['state']) #find the current state for the given pair of stations
         #key = key = origin_id + ' to ' + destination_id
