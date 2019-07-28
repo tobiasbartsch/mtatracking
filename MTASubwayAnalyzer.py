@@ -40,6 +40,19 @@ class delayOfTrainsInLine_Bayes(object):
         #initialize the delay probability along this line
         self.delayProbs = {key: 0.0 for key in self.means.keys()}
 
+    def preComputeMeanAndSdev(self, segs):
+        """Compute the means and standard deviations of transit times along the segments defined in 'segs'.
+        Store the results in self.means and self.sdevs
+
+        Args:
+            segs (list of string): list of pairs of station ids, ['R30N to Q01N', ... ]. Ids must correspond to stations along the given line (self.line_id)
+        """
+
+        for seg in segs:
+            ids = seg.split()
+            self.means[seg], self.sdevs[seg]= self._getCurrentTravelTimeMeanAndSdev(ids[0], ids[2])
+            
+
     def changeThreshold(self, n):
         """Change the definition of a 'delay': a train has to be n standard deviations late to be considered 'delayed'.
         Args:
