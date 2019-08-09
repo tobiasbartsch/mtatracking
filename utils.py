@@ -103,3 +103,23 @@ class utils(object):
         seconds_since_midnight = (dt - dt.replace(hour=0, minute=0, second=0, microsecond=0)).total_seconds()
 
         return (day, seconds_since_midnight)
+
+    @staticmethod
+    def timestamp_to_string(timestamp, tzone='US/Eastern'):
+        '''Convert a time stamp to a human readable string
+        You can set a timezone, but by default this function assumes that we are in US/Eastern.
+        
+        Args:
+            timestamp (int): A Unix timestamp
+            tzone (string): timezone string for the pytz package        
+        
+        Returns:
+            timestring (string): human readable date time.
+        '''
+        est = pytz.timezone(tzone)
+        utc = pytz.utc
+        dt = datetime.utcfromtimestamp(timestamp)
+        dt = utc.localize(dt)
+        dt = dt.astimezone(est)
+
+        return str(dt)

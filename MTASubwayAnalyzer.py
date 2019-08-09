@@ -50,7 +50,9 @@ class delayOfTrainsInLine_Bayes(object):
         """
 
         for seg in segs:
+            print(seg)
             ids = seg.split()
+            
             self.means[seg], self.sdevs[seg]= self._getCurrentTravelTimeMeanAndSdev(ids[0], ids[2])
             
 
@@ -363,7 +365,11 @@ class MTASubwayAnalyzer(object):
 
         #compute a histogram of the fitted and raw data 
         hist_range = (int(mean - 4 * sigma), int(mean + 4 * sigma))
-        fit_hist = np.histogram(fit, bins=int(8*sigma), range = hist_range)
+        nbins = int(8*sigma)
+        print(nbins)
+        if nbins < 1:
+            nbins = 1
+        fit_hist = np.histogram(fit, bins=nbins, range = hist_range)
         data_hist = np.histogram(transitTimeSeries, bins=100, range = hist_range)
 
         return data, fitArray, results, fit_hist, data_hist, MDLs
