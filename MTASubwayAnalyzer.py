@@ -40,7 +40,7 @@ class delayOfTrainsInLine_Bayes(object):
         #initialize the delay probability along this line
         self.delayProbs = {key: 0.0 for key in self.means.keys()}
 
-    def preComputeMeanAndSdev(self, segs, timestamp_start, timestamp_end):
+        '''def preComputeMeanAndSdev(self, segs, timestamp_start, timestamp_end):
         """Compute the means and standard deviations of transit times along the segments defined in 'segs'.
         Store the results in self.means and self.sdevs
 
@@ -54,6 +54,7 @@ class delayOfTrainsInLine_Bayes(object):
             ids = seg.split()
             
             self.means[seg], self.sdevs[seg]= self._getCurrentTravelTimeMeanAndSdev(ids[0], ids[2])
+        '''
             
 
     def changeThreshold(self, n):
@@ -455,6 +456,5 @@ class MTASubwayAnalyzer(object):
         seconds_since_midnight = (dt - dt.replace(hour=0, minute=0, second=0, microsecond=0)).total_seconds()
 
         return (day, seconds_since_midnight)
-
 
 

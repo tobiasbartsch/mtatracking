@@ -1,5 +1,6 @@
 import time
-
+import sys
+sys.path.append('/home/tbartsch/source/repos')
 from mtatracking.utils import utils
 from mtatracking.MTAdatamine import MTAdatamine
 #from MTAdatamodel import SubwaySystem

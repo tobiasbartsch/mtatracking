@@ -7,6 +7,7 @@ import math
 from datetime import datetime
 from operator import itemgetter
 from collections import defaultdict
+from xml.dom import minidom
 
 import sys
 sys.path.append('/home/tbartsch/source/repos')
@@ -22,6 +23,22 @@ class MTAdatamine(object):
             key: Your access key to the MTA realtime data feeds
         """
         self.k = key
+    
+    def GetElevatorData(self):
+        '''Get outage information on elevators at stations in the subway system'''
+
+        data = None
+        elevatorxml = None
+        while data is None:
+            try:
+                url = 'http://web.mta.info/developers/data/nyct/nyct_ene.xml'
+                with urllib.request.urlopen(url) as response:
+                    data = response.read()
+                    elevatorxml = minidom.parseString(data)
+            except:
+                data = None
+                pass
+        return elevatorxml
 
     def TrackTrains(self, feed_ids):
         """Query the locations and status of all trains of a specific set of lines.
