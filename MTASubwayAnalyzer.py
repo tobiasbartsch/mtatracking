@@ -13,6 +13,7 @@ from scipy.special import gamma
 import pymc3 as pm
 
 from collections import defaultdict
+from itertools import permutations
 import xarray as xr
 import warnings
 
@@ -23,39 +24,42 @@ import algorithms.HaarWavelet as hw
 
 class delayOfTrainsInLine_Bayes(object):
     """Determine the delay of trains on a subway line."""
-
-    def __init__(self, line_id, analyzer, n=3):
+            
+    def __init__(self, line_id, analyzer, n=3, timestamp_start = 0, timestamp_end = 999999999999):
         """create a delayOfTrainsInLine_Bayes instance.
         Args:
             line_id (string): id of this subway line. For northbound Q trains, for example, pass 'QN'.
             analyzer (MTASubwayAnalyzer): analyzer object of historic subway data (ideally with data up to the present day/time)
             n (float): number of sdevs that define a threshold beyond which we treat a train as delayed (delay for t > n).
+            timestamp_start, timestamp_end: historic time stamps for computation of the mean and sdev
         """
+        print('creating delays object for line ' + str(line_id))
         self.line_id = line_id
         self.means = dict() #mean transit time between adjacent stations. keys: pair of stations ids, e.g. 'R30N to Q01N'
         self.sdevs = dict() #sdev of transit time between adjacent stations. keys: pair of stations ids, e.g. 'R30N to Q01N'
         self.n = n
+        self.timestamp_start = timestamp_start
+        self.timestamp_end = timestamp_end
         self.analyzer = analyzer
 
         #initialize the delay probability along this line
         self.delayProbs = {key: 0.0 for key in self.means.keys()}
 
-        '''def preComputeMeanAndSdev(self, segs, timestamp_start, timestamp_end):
-        """Compute the means and standard deviations of transit times along the segments defined in 'segs'.
-        Store the results in self.means and self.sdevs
-
-        Args:
-            segs (list of string): list of pairs of station ids, ['R30N to Q01N', ... ]. Ids must correspond to stations along the given line (self.line_id)
-            timestamp_start, timestamp_end: historic time stamps for computation of the mean and sdev
+    def preComputeMeanAndSdev(self):
+        """Compute the means and standard deviations of transit times along all segments identified in the analyzer.
+        Store the results in self.means and self.sdevs.
         """
 
-        for seg in segs:
-            print(seg)
-            ids = seg.split()
-            
-            self.means[seg], self.sdevs[seg]= self._getCurrentTravelTimeMeanAndSdev(ids[0], ids[2])
-        '''
-            
+        stationsAlongLine = self.analyzer.stations_along_lines[self.line_id]
+        station_pairs = list(permutations(stationsAlongLine, 2))
+        for pair in station_pairs:
+            origin_id = pair[0]
+            destination_id = pair[1]
+            key = origin_id + ' to ' + destination_id
+            if(key not in self.means.keys()):
+                #get the statistics for this segment:
+                self.means[key], self.sdevs[key]= self._getCurrentTravelTimeMeanAndSdev(origin_id, destination_id, self.timestamp_start, self.timestamp_end)
+
 
     def changeThreshold(self, n):
         """Change the definition of a 'delay': a train has to be n standard deviations late to be considered 'delayed'.
@@ -64,13 +68,12 @@ class delayOfTrainsInLine_Bayes(object):
         """
         self.n = n
     
-    def updateDelayProbs(self, trains_in_line, timestamp, timestamp_start = 0, timestamp_end = 999999999999):
+    def updateDelayProbs(self, trains_in_line, timestamp):
         """Calculate the probability that a delay occurs between a pair of stations based on the wait time for a train.
         
         Args:
             trains_in_line (list of mtatracking.MTAdatamodel.SubwayTrain): the realtime train objects that are currently traversing this subway line.
             timestamp (int): the timestamp at which the current trains were observed.
-            timestamp_start, timestamp_end: historic time stamps for computation of the mean and sdev
         """
         self.delayProbs = dict()
         for train in trains_in_line:
@@ -82,7 +85,7 @@ class delayOfTrainsInLine_Bayes(object):
             key = origin_id + ' to ' + destination_id
             if(key not in self.means.keys()): #check whether the current train is travelling between two known stations.
                 #get the statistics for this segment:
-                self.means[key], self.sdevs[key]= self._getCurrentTravelTimeMeanAndSdev(origin_id, destination_id, timestamp_start, timestamp_end)
+                self.means[key], self.sdevs[key]= self._getCurrentTravelTimeMeanAndSdev(origin_id, destination_id, self.timestamp_start, self.timestamp_end)
             
             self.delayProbs[key] = self._probability_of_delay(wait_time, self.means[key], self.sdevs[key], self.n)
 
@@ -190,9 +193,38 @@ class MTASubwayAnalyzer(object):
     In order to improve code reusability try to have logic happen here instead of the ViewModel layer (and certainly not in the view layer).
     """
 
+    def getStationsAlongLines(self):
+        '''return a list of stations for each line. Compute this from historic subway system data'''
+        subsys = self.subwaysys
+        stations_along_line = defaultdict(list)
+        stations_along_line_sets = {}
+        for station_id, station in subsys.stations.items():
+            lines_stopped_here = list(station.trains_stopped.keys())
+            for line in lines_stopped_here:
+                stations_along_line[line].append(station_id)
+                
+        #make lists unique using sets
+        for line, stations in stations_along_line.items():
+            stations_set = list(set(stations))
+            stations_along_line_sets[line] = stations_set
+            
+        return stations_along_line_sets
+
     def __init__(self, mySubwaySystem):
         self.subwaysys = mySubwaySystem
+        self.stations_along_lines = self.getStationsAlongLines()
         
+    @property
+    def trains(self):
+        '''all trains in the subway system'''
+        return np.array(list(self.subwaysys.trains.values()))
+    
+    @property
+    def unique_lines(self):
+        '''return a list of all unique lines in the subway system'''
+        ids = np.asarray([train.route_id + train.direction for train in self.trains])
+        return list(set(ids))
+
     def AverageArrivalDelta_v2(self, windowsize_seconds, line_id, timestamp_start, timestamp_end):
         """Return the average delta arrival times for each station in a particular line vs time of a day. 
         Args:
@@ -296,7 +328,7 @@ class MTASubwayAnalyzer(object):
                                                                         data_hist (np.histogram): histogram of the data, 100 bins, flexible bin size to accommodate the data
                                                                         MDLs (np.array): minimum description lengths for the various models. The fit and results reflect the model with the minimum description length.                                                          
         """
-
+        print('begin STaSI algorithm')
         if (timestamp_start < self.subwaysys.timestamp_startTracking):
             timestamp_start = self.subwaysys.timestamp_startTracking
         if (timestamp_end > self.subwaysys.timestamp_endTracking):
@@ -373,6 +405,7 @@ class MTASubwayAnalyzer(object):
         fit_hist = np.histogram(fit, bins=nbins, range = hist_range)
         data_hist = np.histogram(transitTimeSeries, bins=100, range = hist_range)
 
+        print('end StaSI algorithm')
         return data, fitArray, results, fit_hist, data_hist, MDLs
 
     def getStatsForStates(self, data, results, normalized, statenum=None):

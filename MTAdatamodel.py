@@ -420,13 +420,15 @@ class SubwayTrain(object):
         else:
             #check whether we got the current tracking data in a timely fashion (i.e. not much later than the previous data, say within 40s.)
             if(self.route_id == 'Q'):
-                print("in arrival_station_id setter, id: " + str(id))
+                #print("in arrival_station_id setter, id: " + str(id))
+                pass
             if(np.abs(timestamp-self.subwaysys.last_attached_file_timestamp) < 40 or self.subwaysys.last_attached_file_timestamp == np.nan):
                 if(self.route_id == 'Q'):
-                    print("no gap, everything ok")
-                    print("id: " + str(id))
-                    print("prev arrival station: " + str(self._arrival_station_id))
-                    print("is assigned?: " + str(self.is_assigned))
+                    #print("no gap, everything ok")
+                    #print("id: " + str(id))
+                    #print("prev arrival station: " + str(self._arrival_station_id))
+                    #print("is assigned?: " + str(self.is_assigned))
+                    pass
                 if(id != self._arrival_station_id and self._arrival_station_id != None and self.is_assigned==True):
                     #we just left the station _arrival_station_id, register that this train stopped at this station.
                     if(self._arrival_station_id not in self.stations):
@@ -438,7 +440,8 @@ class SubwayTrain(object):
                     self._departed_at_time = timestamp
                     self._arrival_station_id = id
                     if(self.route_id == 'Q'):
-                        print("performed normal update")
+                        #print("performed normal update")
+                        pass
                 elif(id != self._arrival_station_id and self._arrival_station_id == None and self.is_assigned==True):
                     #previous arrival station was None, so we do not know at what station we just stopped (if any). So do not register the train, just update internal properties
                     self._departure_station_id = self._arrival_station_id
@@ -449,16 +452,19 @@ class SubwayTrain(object):
             else:
                 '''there is a gap > 40s in the tracking data -- we cannot be sure where the train previously was, all we know is where it is going. Update the arrival station id only, but leave the departure station alone''' 
                 if(self.route_id == 'Q'):
-                    print("40s gap")
+                    #print("40s gap")
+                    pass
                 if(self.is_assigned==True):
                     self._arrival_station_id = id
                     self._departure_station_id = None
                     self._departed_at_time = None
                     if(self.route_id == 'Q'):
-                        print("anormal update")
+                        #print("anormal update")
+                        pass
                 else:
                     if(self.route_id == 'Q'):
-                        print("failed update since not assigned.")
+                        #print("failed update since not assigned.")
+                        pass
 
     @property
     def status(self):
