@@ -45,6 +45,28 @@ class SubwayMapData():
         self._delays = CurrentTransitTimeDelays(histDataPath=historicDataPath).delays
         self._RTsys = SubwaySystem()
         self._mineRTdata = True
+        self._selected_dir = 'N'
+        self._selected_line = 'Q'
+
+    @property
+    def selected_dir(self):
+        '''the direction selected in the view'''
+        return self._selected_dir
+
+    @selected_dir.setter
+    def selected_dir(self, v):
+        self._selected_dir = v
+
+    @property
+    def selected_line(self):
+        '''the line selected in the view'''
+        return self._selected_line
+    
+    @selected_line.setter
+    def selected_line(self, v):
+        self._selected_line = v
+        print('highlighting line ', v)
+        self.linesdf = highlightOneLine(self.linesdf, v)
 
     @property
     def mineRTdata(self):
@@ -134,9 +156,11 @@ class SubwayMapData():
                     stations.loc[stations['stop_id']==k[2][:-1], 'displaysize']=size
             self.stationsdf = stations
             print('done with iteration')
-            #delays_filename = 'delays' + datetime.today().strftime('%Y-%m-%d') + '.pkl'
+            delays_filename = 'delays' + datetime.today().strftime('%Y-%m-%d') + '.pkl'
 
-            #utils.write(delays, delays_filename)
+            utils.write(delays, delays_filename)
+
+    
 
 
 def initializeStationsAndLines(lines_geojson, stations_geojson):
@@ -156,6 +180,60 @@ def initializeStationsAndLines(lines_geojson, stations_geojson):
 
     stations['color'] = cc.blues[1]
     stations['displaysize'] = 3
+    
     lines['color'] = cc.blues[1]
+    lines = colorizeAllLines(lines)
 
     return (stations, lines)
+
+
+def colorizeAllLines(linesdf):
+    ''' set all lines in the linesdf to their respective colors.
+    Args:
+        linesdf: the lines dataframe
+
+    Returns:
+        linesdf: lines dataframe with modified colors column
+    '''
+
+    line_ids = ['A', 'C', 'E', 'B', 'D', 'F', 'M', 'G', 'L', 'J', 'Z', 'N', 'Q', 'R', 'W', '1', '2', '3', '4', '5', '6', '7', 'T', 'S']
+
+    for line_id in line_ids:
+        linesdf.loc[linesdf['name'].str.contains(line_id), 'color'] = LineColor(line_id)    
+    
+    return linesdf
+
+def highlightOneLine(linesdf, lineid):
+    ''' set a single line in the linesdf to its respective color. All others are set to grey.
+    Args:
+        linesdf: the lines dataframe
+        lineid: id of the line to colorize. This can be either with or without its direction ('Q' and 'QN' produce the same result)
+
+    Returns:
+        linesdf: lines dataframe with modified colors column
+    '''
+    lineid = lineid[0]
+    linesdf['color'] = cc.blues[1]
+    linesdf.loc[linesdf['name'].str.contains(lineid), 'color'] = LineColor(lineid) 
+
+    return linesdf
+
+
+def LineColor(lineid):
+    '''return the color of line lineid
+    Args:
+        lineid: id of the line to colorize. This can be either with or without its direction ('Q' and 'QN' produce the same result)
+    Returns:
+        color
+    '''
+
+    lineid = lineid[0]
+
+    colors = ['#2850ad', '#ff6319', '#6cbe45', '#a7a9ac', '#996633', '#fccc0a', '#ee352e', '#00933c', '#b933ad', '#00add0', '#808183']
+    lines_ids = [['A', 'C', 'E'], ['B', 'D', 'F', 'M'], ['G'], ['L'], ['J', 'Z'], ['N', 'Q', 'R', 'W'], ['1', '2', '3'], ['4', '5', '6'], ['7'], ['T'], ['S']]
+
+    c = pd.Series(colors)
+    ids = pd.DataFrame(lines_ids)
+    c[(ids == lineid).any(axis=1)]
+
+    return c[(ids == lineid).any(axis=1)].to_numpy()[0]

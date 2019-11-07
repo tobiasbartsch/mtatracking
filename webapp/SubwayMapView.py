@@ -52,7 +52,14 @@ class SubwayMap(Stream):
 
         #bind changes in the stationsdf to pipe.send
         mapdata.bind_to_stationsdf(self.pipe.send)
-        
+        self.mapdata = mapdata
 
     def view(self):
         return self.subway_map
+    
+    #https://panel.pyviz.org/user_guide/Param.html
+    @param.depends('direction', 'line', watch=True)
+    def update(self):
+        print('the view thinks we picked line', SubwayMap.line)
+        self.mapdata.selected_dir = SubwayMap.direction
+        self.mapdata.selected_line = SubwayMap.line
