@@ -220,6 +220,24 @@ class SubwayStation(object):
         self.trains_stopped = defaultdict(type(defaultdict(str))) #outer keys: line and direction, e.g. key: 'QN' is the northbound Q line. inner keys: train IDs, values: timestamps of stops
         self.subwaysys = this_subway_sys
 
+    def timeSinceLastTrainOfLineStoppedHere(self, route_id, direction, currenttime):
+        '''Return the time in seconds since the last train of a particular route and direction stopped here.
+        Return None if such a train has never stopped at this station.
+
+        Args:
+            route_id: Route ID of the stopped train
+            direction: direction the stopped train is travelling in
+            currenttime: the current time stamp
+        Returns:
+            wait time: time in seconds since the last train stopped here
+        '''
+        line_dir = str(route_id) + str(direction)
+        stop_times = list(self.trains_stopped[line_dir].values())
+        if len(stop_times)==0:
+            return None
+        lastStopTime = np.max(stop_times)
+        return currenttime - lastStopTime
+
     def registerStoppedTrain(self, train_id, route_id, direction, timestamp):
         """Register a stopped train with this station.
             

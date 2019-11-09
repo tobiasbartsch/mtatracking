@@ -31,7 +31,7 @@ class SubwayMapData():
     def __init__(self, stationsdf, linesdf, historicDataPath = '/home/tbartsch/data/testsys.pkl'):
         '''initialize a new SubwayMapData object
         Args:
-            stationsdf: dataframe containing stations geomertry
+            stationsdf: dataframe containing stations geometry
             linesdf: dataframe containing lines geometry
             historicDataPath (string): path to a pickeled historic subway system object. This is used to compute
                                         mean transit times between stations against which we compare the current times.
@@ -49,13 +49,19 @@ class SubwayMapData():
         self._selected_line = 'Q'
 
     @property
+    def line_ids(self):
+        '''list of all line ids in the system'''
+        print([element[:-1] for element in list(self._delays.keys())])
+        return [element[:-1] for element in list(self._delays.keys())]
+
+    @property
     def selected_dir(self):
         '''the direction selected in the view'''
         return self._selected_dir
 
     @selected_dir.setter
     def selected_dir(self, v):
-        self._selected_dir = v
+        self._selected_dir = v[:1] #only save first letter (North = N)
 
     @property
     def selected_line(self):
@@ -66,7 +72,10 @@ class SubwayMapData():
     def selected_line(self, v):
         self._selected_line = v
         print('highlighting line ', v)
-        self.linesdf = highlightOneLine(self.linesdf, v)
+        if v == 'All':
+            self.linesdf = colorizeAllLines(self.linesdf)
+        else:
+            self.linesdf = highlightOneLine(self.linesdf, v)
 
     @property
     def mineRTdata(self):
@@ -131,19 +140,43 @@ class SubwayMapData():
             myRTsys.attach_tracking_data(tracking_results, current_time)
             print('done attaching')
             trains = np.array(list(myRTsys.trains.values()))
-            ids = np.asarray([(train.route_id, train.direction) for train in trains])
+            #ids = np.asarray([(train.route_id, train.direction) for train in trains])
         
-            #reset all stations to grey. Todo: this should probably be in the view, shouldn't it?
+            #reset all stations to grey.
             stations.loc[:,'color']=cc.blues[1]
-            stations.loc[:,'displaysize']=3    
-            print('beginning for loop')
-            for line_id, delay in delays.items():
-                line = line_id[:-1]
-                direction = line_id[-1:]
-                these_trains = trains[np.bitwise_and(ids[:,0] == line, ids[:,1] == direction)]
-                #print('updating line ' + line_id)
-                await loop.run_in_executor(_executor, delay.updateDelayProbs, these_trains, current_time)
+            stations.loc[:,'displaysize']=3
+            stations.loc[:, 'waittimecolor']=cc.blues[1]
 
+            print('loop')
+            await self._updateStationsDfDelayInfo(delays, trains, stations, current_time, loop)
+            await self._updateStationsDfWaitTime(myRTsys, stations, current_time, self.selected_dir, self.selected_line)
+
+            self.stationsdf = stations
+            print('done with iteration')
+            #delays_filename = 'delays' + datetime.today().strftime('%Y-%m-%d') + '.pkl'
+            await asyncio.sleep(1)
+            #utils.write(delays, delays_filename)
+
+    async def _updateStationsDfDelayInfo(self, delays, trains, stations, current_time, loop):
+        '''update 'color' and 'displaysize' columns in the data frame, reflecting the probability that a subway will reach a station with a delay
+        
+        Args:
+            delays: dictionary of delay objects
+            trains: the trains we are currently tracking
+            stations: stations data frame
+            current_time: current time stamp
+            loop: IOLoop for async execution
+        
+        '''
+        ids = np.asarray([(train.route_id, train.direction) for train in trains])
+        for line_id, delay in delays.items():
+            line = line_id[:-1]
+            direction = line_id[-1:]
+            these_trains = trains[np.bitwise_and(ids[:,0] == line, ids[:,1] == direction)]
+            #print('updating line ' + line_id)
+            await loop.run_in_executor(_executor, delay.updateDelayProbs, these_trains, current_time)
+            
+            if (line == self.selected_line or self.selected_line == 'All') and direction == self.selected_dir:
                 for key, val in delay.delayProbs.items():
                     k = key.split()
                     if not np.isnan(val):
@@ -154,12 +187,45 @@ class SubwayMapData():
                         size = 5
                     stations.loc[stations['stop_id']==k[2][:-1], 'color']=col
                     stations.loc[stations['stop_id']==k[2][:-1], 'displaysize']=size
-            self.stationsdf = stations
-            print('done with iteration')
-            delays_filename = 'delays' + datetime.today().strftime('%Y-%m-%d') + '.pkl'
 
-            utils.write(delays, delays_filename)
 
+    async def _updateStationsDfWaitTime(self, subwaysys, stationsdf, currenttime, selected_dir, selected_line):
+        '''update "waittime", "waittimedisplaysize", and "waittimecolor" column in data frame, reflecting the time (in seconds) that has passed since the last train visited this station.
+        This is trivial if we are only interested in trains of a particular line, but gets more tricky if the user selected to view "All" lines
+        
+        Args: 
+            subwaysys: subway system object containing the most recent tracking data
+            stationsdf: stations data frame 
+        '''
+        for station_id, station in subwaysys.stations.items():
+            if station_id is not None and len(station_id) > 1:
+                station_dir = station_id[-1:]
+                s_id = station_id[:-1]
+                wait_time = None
+                if station_dir == selected_dir and selected_line is not 'All': #make sure we are performing this update according to the direction selected by the user
+                    wait_time = station.timeSinceLastTrainOfLineStoppedHere(selected_line, selected_dir, currenttime)
+                elif station_dir == selected_dir and selected_line == 'All':
+                    wait_times = []
+                    #iterate over all lines that stop here
+                    lines_this_station = list(station.trains_stopped.keys()) #contains direction (i.e. QN instead of Q)
+                    lines_this_station = list(set([ele[:-1] for ele in lines_this_station]))
+                    for line in lines_this_station:
+                        wait_times.append(station.timeSinceLastTrainOfLineStoppedHere(line, selected_dir, currenttime))
+                    wait_times = np.array(wait_times)
+                    wts = wait_times[wait_times != None]
+                    if len(wts) > 0:
+                        wait_time = np.min(wait_times[wait_times != None])
+                    else:
+                        wait_time = None
+                if(wait_time is not None):
+                    stationsdf.loc[stationsdf['stop_id']==s_id, 'waittime']=wait_time
+                    #spread colors over 30 min. We want to eventually replace this with a scaling by sdev
+                    col = cc.fire[int(np.floor(wait_time/(30*60)*255))]
+                    stationsdf.loc[stationsdf['stop_id']==s_id, 'waittimecolor']=col
+                    stationsdf.loc[stationsdf['stop_id']==s_id, 'waittimedisplaysize']=5 #constant size in this display mode        
+
+        
+        
     
 
 
@@ -178,8 +244,13 @@ def initializeStationsAndLines(lines_geojson, stations_geojson):
     stationsDF = MTAdatamodel.MTAstaticdata.ImportStationsDataFrame()
     addStationID_andNameToGeoPandas(stations, stationsDF)
 
-    stations['color'] = cc.blues[1]
+    stations['color'] = cc.blues[1] #this color reflects the delay of the incoming train. We should rename this.
     stations['displaysize'] = 3
+
+    stations['waittime']=np.nan
+    stations['waittimedisplaysize']=3
+    stations['waittimecolor']=cc.blues[1] #this color reflects the time that has passed since a train visited this station. The view should decide which color to display.
+    stations['waittimedisplaysize']=3 
     
     lines['color'] = cc.blues[1]
     lines = colorizeAllLines(lines)
