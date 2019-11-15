@@ -5,6 +5,7 @@ import time
 import asyncio
 import colorcet as cc #it's a bit unclear whether this should be here (move to view?). Not clear how to implement that there though
 import geopandas as gpd
+import datetime as datet
 
 from cartopy import crs
 from SubwayMapModel import CurrentTransitTimeDelays
@@ -131,9 +132,10 @@ class SubwayMapData():
             print('beginning iteration')
             #time.sleep(5)
             stations = self.stationsdf.copy()
-            feed_id = [1,26,16,21,2,11,31,36,51] #all the feeds. probably not great that this is hardcoded, what if they add a new one?
+            #feed_id = [1,26,16,21,2,11,31,36,51] #all the feeds. probably not great that this is hardcoded, what if they add a new one?
+            feed_id = ['gtfs-ace', 'gtfs-bdfm', 'gtfs-g', 'gtfs-jz', 'gtfs-nqrw', 'gtfs-l', 'gtfs', 'gtfs-7', 'gtfs-si']
             print('start tracking')
-            tracking_results = mine.TrackTrains(feed_id)
+            tracking_results = await self._getdata(mine, feed_id, 10)
             print('end tracking')
             current_time = time.time()
             print('have time, attaching tracking data')
@@ -145,7 +147,10 @@ class SubwayMapData():
             #reset all stations to grey.
             stations.loc[:,'color']=cc.blues[1]
             stations.loc[:,'displaysize']=3
+            stations.loc[:, 'MTAdelay']=False
             stations.loc[:, 'waittimecolor']=cc.blues[1]
+            stations.loc[:, 'delay_prob'] = np.nan
+            stations.loc[:, 'waittime_str']='unknown'
 
             print('loop')
             await self._updateStationsDfDelayInfo(delays, trains, stations, current_time, loop)
@@ -154,8 +159,13 @@ class SubwayMapData():
             self.stationsdf = stations
             print('done with iteration')
             #delays_filename = 'delays' + datetime.today().strftime('%Y-%m-%d') + '.pkl'
-            await asyncio.sleep(1)
             #utils.write(delays, delays_filename)
+
+    async def _getdata(self, dmine, feed_id, waittime):
+        tracking_results = dmine.TrackTrains(feed_id)
+        await asyncio.sleep(waittime)
+        return tracking_results
+
 
     async def _updateStationsDfDelayInfo(self, delays, trains, stations, current_time, loop):
         '''update 'color' and 'displaysize' columns in the data frame, reflecting the probability that a subway will reach a station with a delay
@@ -176,6 +186,14 @@ class SubwayMapData():
             #print('updating line ' + line_id)
             await loop.run_in_executor(_executor, delay.updateDelayProbs, these_trains, current_time)
             
+            for train in these_trains:
+                #get the MTA delay info and populate df with that
+                MTADelayMessages = train.MTADelayMessages
+                if len(MTADelayMessages) > 0:
+                    if(np.abs(current_time - np.max(MTADelayMessages))) < 40:
+                        arr_station = train.arrival_station_id[:-1]
+                        stations.loc[stations['stop_id']==arr_station, 'MTAdelay']=True
+
             if (line == self.selected_line or self.selected_line == 'All') and direction == self.selected_dir:
                 for key, val in delay.delayProbs.items():
                     k = key.split()
@@ -187,6 +205,7 @@ class SubwayMapData():
                         size = 5
                     stations.loc[stations['stop_id']==k[2][:-1], 'color']=col
                     stations.loc[stations['stop_id']==k[2][:-1], 'displaysize']=size
+                    stations.loc[stations['stop_id']==k[2][:-1], 'delay_prob']=val
 
 
     async def _updateStationsDfWaitTime(self, subwaysys, stationsdf, currenttime, selected_dir, selected_line):
@@ -218,9 +237,13 @@ class SubwayMapData():
                     else:
                         wait_time = None
                 if(wait_time is not None):
-                    stationsdf.loc[stationsdf['stop_id']==s_id, 'waittime']=wait_time
+                    stationsdf.loc[stationsdf['stop_id']==s_id, 'waittime']=wait_time #str(datet.timedelta(seconds=wait_time))
+                    stationsdf.loc[stationsdf['stop_id']==s_id, 'waittime_str'] = timedispstring(wait_time)
                     #spread colors over 30 min. We want to eventually replace this with a scaling by sdev
-                    col = cc.fire[int(np.floor(wait_time/(30*60)*255))]
+                    if(int(np.floor(wait_time/(30*60)*255)) < 255):
+                        col = cc.fire[int(np.floor(wait_time/(30*60)*255))]
+                    else:
+                        col = cc.fire[255]
                     stationsdf.loc[stationsdf['stop_id']==s_id, 'waittimecolor']=col
                     stationsdf.loc[stationsdf['stop_id']==s_id, 'waittimedisplaysize']=5 #constant size in this display mode        
 
@@ -246,8 +269,11 @@ def initializeStationsAndLines(lines_geojson, stations_geojson):
 
     stations['color'] = cc.blues[1] #this color reflects the delay of the incoming train. We should rename this.
     stations['displaysize'] = 3
+    stations['delay_prob'] = np.nan
+    stations['MTAdelay']=False
 
     stations['waittime']=np.nan
+    stations['waittime_str']='unknown'
     stations['waittimedisplaysize']=3
     stations['waittimecolor']=cc.blues[1] #this color reflects the time that has passed since a train visited this station. The view should decide which color to display.
     stations['waittimedisplaysize']=3 
@@ -308,3 +334,13 @@ def LineColor(lineid):
     c[(ids == lineid).any(axis=1)]
 
     return c[(ids == lineid).any(axis=1)].to_numpy()[0]
+
+def timedispstring(secs):
+    hms = str(datet.timedelta(seconds=round(secs))).split(':')
+    if hms[0] == '0':
+        if hms[1].lstrip("0") == '':
+            return hms[2].lstrip("0") + ' s'
+        else:
+            return hms[1].lstrip("0") + ' min ' + hms[2].lstrip("0") + ' s'
+    else:
+        return hms[0].lstrip("0") + ' hours ' + hms[1].lstrip("0") + ' min ' + hms[2].lstrip("0") + ' s'
