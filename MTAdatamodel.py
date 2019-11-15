@@ -8,6 +8,7 @@ import pandas as pd
 import mtatracking.nyct_subway_pb2 as nyct_subway_pb2
 from collections import defaultdict
 import numpy as np
+import warnings
 
 from importlib.resources import path
 from . import resources
@@ -71,6 +72,8 @@ class SubwaySystem(object):
                     self._processTripUpdate(FeedEntity, current_trains, current_time)
                 if len(FeedEntity.vehicle.trip.trip_id) > 0: #entity type "vehicle"
                     self._processVehicleMessage(FeedEntity, current_trains, current_time)
+                if len(FeedEntity.alert.header_text.translation) > 0: #alert message
+                    self._processAlertMessage(FeedEntity, current_trains, current_time)
  
         #delete all trains in the subway system that are not in the new feed. 
         #trains that are not in the new feed have arrived at their final station and we need to update their status accordingly
@@ -141,6 +144,24 @@ class SubwaySystem(object):
         #update vehicle info for the current train
         self.trains[train_id].current_stop_sequence = FeedEntity.vehicle.current_stop_sequence
         self.trains[train_id].status = (FeedEntity.vehicle.current_status, FeedEntity.vehicle.timestamp, FeedEntity.vehicle.stop_id)
+
+    def _processAlertMessage(self, FeedEntity, current_trains, current_time):
+        '''process any alert messages in the feed. These are always delay messages and should always refer to the delayed train.
+        
+        Args:
+            FeedEntity: AlertMessage FeedEntity (from protobuffer).
+            current_trains (list): a list of the train_ids of the trains in the current feed. This function asserts that we already know about the delayed train.
+            current_time (timestamp): timestamp in seconds since 1970
+        '''
+
+        if len(FeedEntity.alert.informed_entity) > 0: #sometimes there are alert messages without reference to trains. We can't really use those so we will for now ignore them.
+            train_id = FeedEntity.alert.informed_entity[0].trip.Extensions[nyct_subway_pb2.nyct_trip_descriptor].train_id
+            
+            if train_id not in self.trains or train_id not in current_trains:
+                warnings.warn("WARNING: ALERT MESSAGE REFERS TO TRAIN NOT IN SYSTEM")
+            else:
+                self.trains[train_id].registerMTADelayMessage(current_time)
+        
 
     def direction_to_str(self, direction):
         """convert a direction number (1, 2, 3, 4) to a string (N, S, E, W)
@@ -319,6 +340,9 @@ class SubwayTrain(object):
         self._status = None
         self._status_timestamp = None
         self._status_stop_id = None
+        self._MTADelayMessages = []
+        self.delayed = False #only has useful values if currentDelayProbForNextStation is modified externally, for example from the delaysInLine object
+        self._currentDelayProbForNextStation = 0 #this currently has to be set externally, for example from the delaysInLine object. Not an ideal way of doing things.
 
 
     def parse_trip_id(self, trip_id):
@@ -335,9 +359,21 @@ class SubwayTrain(object):
         path_id = path_id[1:]
         return (origin_time, line, direction, path_id)
 
+    @property
+    def currentDelayProbForNextStation(self):
+        return self._currentDelayProbForNextStation
+
+    @currentDelayProbForNextStation.setter
+    def currentDelayProbForNextStation(self, val):
+        self._currentDelayProbForNextStation = val
+        if val == 1:
+            self.delayed = True
+
+
     @property #the unique number we get from the MTA may actually not be unique (looks to be only unique within one day). To make it entirely unique, add the time we first started tracking this train.
     def unique_num(self):
         return str(self._time) + '_' + str(self._unique_num)
+        #return self._unique_num
 
     @property
     def route_id(self):
@@ -437,16 +473,7 @@ class SubwayTrain(object):
             raise ValueError("Pass a tuple of ID and timestamp")
         else:
             #check whether we got the current tracking data in a timely fashion (i.e. not much later than the previous data, say within 40s.)
-            if(self.route_id == 'Q'):
-                #print("in arrival_station_id setter, id: " + str(id))
-                pass
             if(np.abs(timestamp-self.subwaysys.last_attached_file_timestamp) < 40 or self.subwaysys.last_attached_file_timestamp == np.nan):
-                if(self.route_id == 'Q'):
-                    #print("no gap, everything ok")
-                    #print("id: " + str(id))
-                    #print("prev arrival station: " + str(self._arrival_station_id))
-                    #print("is assigned?: " + str(self.is_assigned))
-                    pass
                 if(id != self._arrival_station_id and self._arrival_station_id != None and self.is_assigned==True):
                     #we just left the station _arrival_station_id, register that this train stopped at this station.
                     if(self._arrival_station_id not in self.stations):
@@ -457,32 +484,26 @@ class SubwayTrain(object):
                     self._departure_station_id = self._arrival_station_id
                     self._departed_at_time = timestamp
                     self._arrival_station_id = id
-                    if(self.route_id == 'Q'):
-                        #print("performed normal update")
-                        pass
+
+                    #if we arrived here and our delay probability is NOT 1, we are not delayed
+                    if self.currentDelayProbForNextStation < 1:
+                        self.delayed = False
+                    else:
+                        self.delayed = True
+
                 elif(id != self._arrival_station_id and self._arrival_station_id == None and self.is_assigned==True):
                     #previous arrival station was None, so we do not know at what station we just stopped (if any). So do not register the train, just update internal properties
+                    self.delayed = False
                     self._departure_station_id = self._arrival_station_id
                     self._departed_at_time = timestamp
                     self._arrival_station_id = id
-
-
             else:
                 '''there is a gap > 40s in the tracking data -- we cannot be sure where the train previously was, all we know is where it is going. Update the arrival station id only, but leave the departure station alone''' 
-                if(self.route_id == 'Q'):
-                    #print("40s gap")
-                    pass
+                self.delayed = False
                 if(self.is_assigned==True):
                     self._arrival_station_id = id
                     self._departure_station_id = None
                     self._departed_at_time = None
-                    if(self.route_id == 'Q'):
-                        #print("anormal update")
-                        pass
-                else:
-                    if(self.route_id == 'Q'):
-                        #print("failed update since not assigned.")
-                        pass
 
     @property
     def status(self):
@@ -524,6 +545,12 @@ class SubwayTrain(object):
         self._status_timestamp = timestamp
         self._status_stop_id = stop_id
     
+    @property
+    def MTADelayMessages(self):
+        return self._MTADelayMessages
+    
+    def registerMTADelayMessage(self, current_time):
+        self._MTADelayMessages.append(current_time)
 
 
 class MTAstaticdata(object):
