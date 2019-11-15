@@ -8,11 +8,14 @@ from datetime import datetime
 from operator import itemgetter
 from collections import defaultdict
 from xml.dom import minidom
+from urllib.request import Request
 
-import sys
-sys.path.append('/home/tbartsch/source/repos')
-import mtatracking.nyct_subway_pb2 as nyct_subway_pb2
-import mtatracking.gtfs_realtime_pb2 as gtfs_realtime_pb2
+#import sys
+#sys.path.append('/home/tbartsch/source/repos')
+#import mtatracking.nyct_subway_pb2 as nyct_subway_pb2
+#import mtatracking.gtfs_realtime_pb2 as gtfs_realtime_pb2
+from . import gtfs_realtime_pb2 as gtfs_realtime_pb2
+from . import nyct_subway_pb2 as nyct_subway_pb2
 
 class MTAdatamine(object):
     """Retrieve realtime information about the status of trains in the NYC subway system."""
@@ -32,7 +35,8 @@ class MTAdatamine(object):
         while data is None:
             try:
                 url = 'http://web.mta.info/developers/data/nyct/nyct_ene.xml'
-                with urllib.request.urlopen(url) as response:
+                req = Request(url, None, {"x-api-key": str(self.k)})
+                with urllib.request.urlopen(req) as response:
                     data = response.read()
                     elevatorxml = minidom.parseString(data)
             except:
@@ -54,19 +58,21 @@ class MTAdatamine(object):
         data = None
         messagelist = []
         while data is None:
-            try:
-                for id in feed_ids: #right now this is set to reprocess ALL feeds if one of them fails.
-                    url = 'http://datamine.mta.info/mta_esi.php?key=' + str(self.k) + '&feed_id=' + str(id)
-                    with urllib.request.urlopen(url) as response:
+            for id in feed_ids: #right now this is set to reprocess ALL feeds if one of them fails.
+                url = 'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2F' + str(id)
+                req = Request(url, None, {"x-api-key": str(self.k)})
+                #with urllib.request.urlopen(url) as response:
+                try:
+                    with urllib.request.urlopen(req) as response:
                         print(id)
                         data = response.read()
                         feed_message = gtfs_realtime_pb2.FeedMessage()
                         feed_message.ParseFromString(data)
                         messagelist.append(feed_message)                          
-            except: #pretty often there are truncated messages. if there are, reset.
-                data=None
-                messagelist=[]
-                pass
+                except: #pretty often there are truncated messages. if there are, tough cookies, go on with what we have.
+                    #data=None
+                    #messagelist=[]
+                    continue
         return messagelist
 
 
