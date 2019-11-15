@@ -3,15 +3,12 @@ import sys
 sys.path.append('/home/tbartsch/source/repos')
 from mtatracking.MTAdatamodel import SubwaySystem
 from mtatracking.MTASubwayAnalyzer import MTASubwayAnalyzer
-import mtatracking.gtfs_realtime_pb2 as gtfs_realtime_pb2
 import os as os
 from os.path import dirname
 from os import walk
 from collections import defaultdict
 from datetime import datetime
 import pytz
-
-
 
 class utils(object):
     """Write or read python objects to/from the harddisk."""
