@@ -32,13 +32,12 @@ class SubwayMap(Stream):
     line = param.ObjectSelector(default='All', objects=lines_list)
     display = param.ObjectSelector(default= 'Probability of train delay', objects = display_list)
 
-    #@staticmethod
     def callback(self, data):
         if(self.display == 'Probability of train delay'):
-            layout = gv.Points(data, vdims=['color', 'displaysize', 'name']).opts(tools=[SubwayMap.hover], size='displaysize', color='color')
+            layout = gv.Points(data, vdims=['color', 'displaysize', 'name','waittime_str', 'delay_prob', 'MTAdelay']).opts(tools=[SubwayMap.hover], size='displaysize', color='color')
         #elif(self.display == 'Time since last train'):
         else:
-            layout = gv.Points(data, vdims=['waittimecolor', 'waittimedisplaysize', 'name']).opts(tools=[SubwayMap.hover], size='waittimedisplaysize', color='waittimecolor')
+            layout = gv.Points(data, vdims=['waittimecolor', 'waittimedisplaysize', 'name', 'waittime_str', 'delay_prob','MTAdelay']).opts(tools=[SubwayMap.hover], size='waittimedisplaysize', color='waittimecolor')
         return layout
 
     def __init__(self, mapdata):
@@ -60,7 +59,7 @@ class SubwayMap(Stream):
         self.mapdata = mapdata
 
 
-    hover = HoverTool(tooltips=[("station", "@name")])
+    hover = HoverTool(tooltips=[("station", "@name"), ("time since last train", "@waittime_str"), ("probability that incoming train is delayed", "@delay_prob"), ("MTA reports delay?", "@MTAdelay")])
 
 
     def view(self):
