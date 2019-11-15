@@ -11,6 +11,7 @@ from scipy.stats import norm
 from scipy.integrate import quad
 from scipy.special import gamma
 import pymc3 as pm
+import pandas as pd
 
 from collections import defaultdict
 from itertools import permutations
@@ -70,12 +71,17 @@ class delayOfTrainsInLine_Bayes(object):
     
     def updateDelayProbs(self, trains_in_line, timestamp):
         """Calculate the probability that a delay occurs between a pair of stations based on the wait time for a train.
+        Updates self.delayProbs, which is a dictionary of station pairs : delay prob values.
+        also returns a dictionary of train id: delay prob. The former dictionary views the track as the source of the delay, the latter thinks of the train as having the delay.
         
         Args:
             trains_in_line (list of mtatracking.MTAdatamodel.SubwayTrain): the realtime train objects that are currently traversing this subway line.
             timestamp (int): the timestamp at which the current trains were observed.
+        Returns:
+            dictionary of {train_id: delay probability}
         """
         self.delayProbs = dict()
+        trainDelayProb = dict()
         for train in trains_in_line:
             origin_id = train.departure_station_id
             if(origin_id is None):
@@ -88,6 +94,9 @@ class delayOfTrainsInLine_Bayes(object):
                 self.means[key], self.sdevs[key]= self._getCurrentTravelTimeMeanAndSdev(origin_id, destination_id, self.timestamp_start, self.timestamp_end)
             
             self.delayProbs[key] = self._probability_of_delay(wait_time, self.means[key], self.sdevs[key], self.n)
+            train.currentDelayProbForNextStation = self.delayProbs[key]
+            trainDelayProb[train.unique_num] = self.delayProbs[key]
+        return trainDelayProb
 
     def _rho_t_given_H(self, t, n, delayed):
         '''compute the probability density of a transit time t given a train delay. A train counts as delayed if it arrives with a delay of at least n sdevs higher than the mean
@@ -209,6 +218,62 @@ class MTASubwayAnalyzer(object):
             stations_along_line_sets[line] = stations_set
             
         return stations_along_line_sets
+
+    def getStationsAlongLine_ordered(self, line):
+        '''return a list of stations for one line, IN THE MOST LIKELY ORDER. Compute this from historic subway system data
+        Args:
+            line: string descriptor of line, including direction and express route symbols, e.g. 'QN', '5N', or '5XN'
+        '''
+        subsys = self.subwaysys
+
+        #first get unordered stations:
+        stations_along_line_sets = self.getStationsAlongLines()
+
+        these_stations = stations_along_line_sets[line]
+
+        #find all trains that visited all of these stations
+        sets_of_trains = []
+        for stationid in these_stations:
+            sets_of_trains.append(list(set(subsys.stations[stationid].trains_stopped[line].keys())))
+
+        #intersect each list of trains with all other lists. Check which one intersects with the most.
+        num_intersections = []
+        results = []
+        for s in sets_of_trains:
+            res = []
+            for t in sets_of_trains:
+                res.append(len(list(set(s).intersection(t))))
+            res = np.array(res)
+            res_f = res[res > 5000]
+            num_intersections.append(len(res_f))
+            results.append(res)
+
+        set_with_max_overlap = sets_of_trains[np.argmax(num_intersections)]
+
+        #get list of trains:
+        #filter good stations:
+        r = results[np.argmax(num_intersections)]
+        f = (r > 5000)
+        #train sets with good overlap:
+        comparison_sets = list(np.array(sets_of_trains)[f])
+        trains = list(set(set_with_max_overlap).intersection(*comparison_sets))
+
+        #now we have trains that visited each of the following stations.
+        stations = np.array(these_stations)[f]
+
+        #this should now be easy: at each station just sum up the timestamps of all trains, then sort.
+        avg_departure_times = []
+
+        for stationid in stations:
+            station = subsys.stations[stationid]
+            avg_departure_time = 0
+            for train in trains:
+                avg_departure_time += station.trains_stopped[line][train]
+            avg_departure_times.append(avg_departure_time)
+
+        stations_ordered = pd.DataFrame({'station_id': stations, 'avg_dep_time': avg_departure_times})
+
+        return np.array(stations_ordered.sort_values(by=['avg_dep_time']).station_id)
 
     def __init__(self, mySubwaySystem):
         self.subwaysys = mySubwaySystem
