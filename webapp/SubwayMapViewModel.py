@@ -11,11 +11,12 @@ from cartopy import crs
 from SubwayMapModel import CurrentTransitTimeDelays
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+from tornado import gen
 
 #homemade modules
 import sys
-sys.path.append('/home/tbartsch/source/repos')
-
+#sys.path.append('/home/tbartsch/source/repos')
+sys.path.append('../../')
 import mtatracking.MTAdatamodel as MTAdatamodel
 from mtatracking.MTAgeo import addStationID_andNameToGeoPandas
 from mtatracking.MTAdatamine import MTAdatamine
@@ -115,6 +116,15 @@ class SubwayMapData():
         self._lines_observers.append(callback)
 
 
+    def PushStationsDF(self):
+        '''await functions that update the stationsdf, then await this function.
+        This triggers push of the dataframe to the view.
+        '''
+        print('hello from the push callback')
+        for callback in self._stations_observers:
+            callback(self._stationsdf)
+        
+
     async def DataMineRT_async(self, key, loop):
         '''get realtime information of the current position of trains in the subway system, 
         track their position and update the probability of train delays for traversed segments of the system.
@@ -151,6 +161,9 @@ class SubwayMapData():
             stations.loc[:, 'waittimecolor']=cc.blues[1]
             stations.loc[:, 'delay_prob'] = np.nan
             stations.loc[:, 'waittime_str']='unknown'
+            stations.loc[:, 'inboundtrain']='N/A'
+            stations.loc[:, 'inbound_from']='N/A'
+            
 
             print('loop')
             await self._updateStationsDfDelayInfo(delays, trains, stations, current_time, loop)
@@ -160,6 +173,11 @@ class SubwayMapData():
             print('done with iteration')
             #delays_filename = 'delays' + datetime.today().strftime('%Y-%m-%d') + '.pkl'
             #utils.write(delays, delays_filename)
+
+    @gen.coroutine
+    def update(self, stations):
+        self.stationsdf = stations
+        
 
     async def _getdata(self, dmine, feed_id, waittime):
         tracking_results = dmine.TrackTrains(feed_id)
@@ -206,6 +224,8 @@ class SubwayMapData():
                     stations.loc[stations['stop_id']==k[2][:-1], 'color']=col
                     stations.loc[stations['stop_id']==k[2][:-1], 'displaysize']=size
                     stations.loc[stations['stop_id']==k[2][:-1], 'delay_prob']=val
+                    stations.loc[stations['stop_id']==k[2][:-1], 'inboundtrain']=delay.train_ids[key]
+                    stations.loc[stations['stop_id']==k[2][:-1], 'inbound_from']=k[0][:-1]
 
 
     async def _updateStationsDfWaitTime(self, subwaysys, stationsdf, currenttime, selected_dir, selected_line):
@@ -271,6 +291,8 @@ def initializeStationsAndLines(lines_geojson, stations_geojson):
     stations['displaysize'] = 3
     stations['delay_prob'] = np.nan
     stations['MTAdelay']=False
+    stations['inboundtrain'] = 'N/A'
+    stations['inbound_from'] = 'N/A'
 
     stations['waittime']=np.nan
     stations['waittime_str']='unknown'

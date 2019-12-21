@@ -1,6 +1,6 @@
 #homemade modules
 import sys
-sys.path.append('/home/tbartsch/source/repos')
+sys.path.append('../../')
 from mtatracking.utils import utils
 from mtatracking.MTAdatamodel import SubwaySystem
 from mtatracking.MTASubwayAnalyzer import MTASubwayAnalyzer
@@ -29,4 +29,6 @@ class CurrentTransitTimeDelays():
         self.unique_lines = analyzer.unique_lines
 
         #self.delays = {id: delayOfTrainsInLine_Bayes(line_id = id, analyzer=analyzer, n=2, timestamp_start = 1556668800, timestamp_end = 1561939200) for id in self.unique_lines}
-        self.delays = utils.read('delays2019-11-06.pkl')
+        #self.delays = utils.read('delays2019-11-06.pkl')
+        self.delays = utils.read('delays_july2019all.pkl')
+        

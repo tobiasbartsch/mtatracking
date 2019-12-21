@@ -6,21 +6,29 @@ import param
 import parambokeh
 import panel as pp
 import threading
+import time
+import colorcet as cc
+
+import sys
+sys.path.append('../../')
 
 from bokeh.server.server import Server
+from bokeh.plotting import curdoc
 from holoviews.streams import Stream
 from SubwayMapView import SubwayMap
 from SubwayMapViewModel import initializeStationsAndLines
 from SubwayMapViewModel import SubwayMapData
+from mtatracking.MTAdatamine import MTAdatamine
 from tornado.ioloop import IOLoop
-import tornado.ioloop
+from threading import Thread
+from functools import partial
 
 # Enter key to download RT data.
 key = input("Enter your MTA realtime access key: ")
 
 stations_str = '/home/tbartsch/data/mtadata/subway_geo/subway_geo.geojson'
 lines_str = '/home/tbartsch/data/mtadata/subway_geo/subway_stations_geo.geojson'
-
+feed_id = ['gtfs-ace', 'gtfs-bdfm', 'gtfs-g', 'gtfs-jz', 'gtfs-nqrw', 'gtfs-l', 'gtfs', 'gtfs-7', 'gtfs-si']
 #load the geographic location of subway stations and lines and create the subway map
 stations, lines = initializeStationsAndLines(stations_str, lines_str)
 
@@ -30,40 +38,32 @@ sdata = SubwayMapData(stations, lines)
 #create our subway map. This is the view. Initializing with the data object should take care of all data binding to property changed callbacks.
 smap = SubwayMap(sdata)
 
+doc = curdoc()
 
 def modify_doc(doc):    
     parambokeh.Widgets(smap, continuous_update=True, callback=smap.event, on_init=True, mode='server')
-    panel = pp.Row(smap, smap.view)
+    #panel = pp.Row(smap, smap.view)
+    panel = pp.Row(smap.view)
     return panel.server_doc(doc=doc)
 
-def start_server():
+# def start_server():
     
-    print('starting server')
-    loop = IOLoop.current()
-    #loop.start()
-    server = Server({'/': modify_doc}, port=9998, address='0.0.0.0', http_server_kwargs={'xheaders': True}, io_loop=loop, allow_websocket_origin=['*'])
-    server.start()
-    server.show('/')
-    loop.spawn_callback(sdata.DataMineRT_async, key, loop)
-    #cb = tornado.ioloop.PeriodicCallback(sdata.PushStationsDF, callback_time=500)
-    #cb.start()
-    #dmine_task = asyncio.create_task(sdata.DataMineRT_async(key, loop))
-    #loop.PeriodicCallback(sdata.DataMineRT_async, key, loop, callback_time=10000)
-    server.run_until_shutdown()
-    print('server was shutdown')
+#     print('starting server')
+#     loop = IOLoop.current()
+#     #loop.start()
+#     server = Server({'/': modify_doc}, port=9999, io_loop=loop)
+#     server.start()
+#     server.show('/')
+#     loop.spawn_callback(sdata.DataMineRT_async, key, loop)
+#     #dmine_task = asyncio.create_task(sdata.DataMineRT_async(key, loop))
+#     #loop.PeriodicCallback(sdata.DataMineRT_async, key, loop, callback_time=10000)
+#     server.run_until_shutdown()
+#     print('server was shutdown')
 
-#datamine_thread = threading.Thread(target = sdata.DataMineRT, args = (key, ))
-# def test(**kwargs):
-#     for i in np.arange(100000):
-#         pass
-#     print('hi, we are in the test function')
+loop = IOLoop.current()
+loop.spawn_callback(sdata.DataMineRT_async, key, loop)
+doc = modify_doc(doc)
 
-# def test2(**kwargs):
-#     print('hi, we are in the test2 function')
 
-#smap.add_subscriber(test)
-#smap.add_subscriber(test2)
-#smap.event()
-#start_server()
 
-start_server()
+

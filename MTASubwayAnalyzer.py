@@ -1,7 +1,7 @@
 import sys
 sys.path.append("/home/tbartsch/source/repos")
 
-from mtatracking.MTAdatamodel import SubwaySystem
+from . MTAdatamodel import SubwaySystem
 import math
 import numpy as np
 from datetime import datetime
@@ -19,9 +19,8 @@ import xarray as xr
 import warnings
 
 
-import algorithms
-import algorithms.STaSI as st
-import algorithms.HaarWavelet as hw
+from . import STaSI as st
+from  . import HaarWavelet as hw
 
 class delayOfTrainsInLine_Bayes(object):
     """Determine the delay of trains on a subway line."""
@@ -38,6 +37,7 @@ class delayOfTrainsInLine_Bayes(object):
         self.line_id = line_id
         self.means = dict() #mean transit time between adjacent stations. keys: pair of stations ids, e.g. 'R30N to Q01N'
         self.sdevs = dict() #sdev of transit time between adjacent stations. keys: pair of stations ids, e.g. 'R30N to Q01N'
+        self.train_ids = dict() #train id of current train between adjacent stations. keys: pair of stations ids, e.g. 'R30N to Q01N'
         self.n = n
         self.timestamp_start = timestamp_start
         self.timestamp_end = timestamp_end
@@ -80,6 +80,7 @@ class delayOfTrainsInLine_Bayes(object):
         Returns:
             dictionary of {train_id: delay probability}
         """
+        self.train_ids = dict()
         self.delayProbs = dict()
         trainDelayProb = dict()
         for train in trains_in_line:
@@ -92,7 +93,7 @@ class delayOfTrainsInLine_Bayes(object):
             if(key not in self.means.keys()): #check whether the current train is travelling between two known stations.
                 #get the statistics for this segment:
                 self.means[key], self.sdevs[key]= self._getCurrentTravelTimeMeanAndSdev(origin_id, destination_id, self.timestamp_start, self.timestamp_end)
-            
+            self.train_ids[key] = train.unique_num.split('_')[1]
             self.delayProbs[key] = self._probability_of_delay(wait_time, self.means[key], self.sdevs[key], self.n)
             train.currentDelayProbForNextStation = self.delayProbs[key]
             trainDelayProb[train.unique_num] = self.delayProbs[key]
